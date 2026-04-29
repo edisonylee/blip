@@ -1,6 +1,6 @@
 import Foundation
 
-/// Group chat message — separate text thread alongside the visual blip (parity with screen-11).
+/// Blipchat text message — separate text thread alongside the visual blip (parity with screen-11).
 struct BlipMessage: Codable, Identifiable, Hashable {
     let id: String
     var uid: String

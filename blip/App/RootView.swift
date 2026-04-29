@@ -4,6 +4,7 @@ struct RootView: View {
     @EnvironmentObject private var auth: AuthService
     @EnvironmentObject private var repo: BlipRepository
     @EnvironmentObject private var moderation: ModerationService
+    @EnvironmentObject private var users: UserRepository
 
     var body: some View {
         Group {
@@ -20,6 +21,7 @@ struct RootView: View {
                     .task(id: uid) {
                         repo.startListening(for: uid)
                         moderation.startListening(for: uid)
+                        users.startListening(for: uid)
                     }
             }
         }

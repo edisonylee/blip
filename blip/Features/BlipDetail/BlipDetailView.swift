@@ -8,6 +8,7 @@ struct BlipDetailView: View {
     @EnvironmentObject private var auth: AuthService
     @State private var showShareSheet = false
     @State private var showMembers = false
+    @State private var showCapture = false
 
     var body: some View {
         ZStack {
@@ -16,7 +17,10 @@ struct BlipDetailView: View {
             ScrollView {
                 LazyVStack(spacing: 8) {
                     // First slot is "you" — current hour, tap to capture
-                    YourSlot(uidInitials: currentUserInitials)
+                    Button { showCapture = true } label: {
+                        YourSlot(uidInitials: currentUserInitials)
+                    }
+                    .buttonStyle(.plain)
 
                     // Remaining slots — invite-a-friend placeholders for empty member seats
                     ForEach(0..<emptySeatCount, id: \.self) { _ in
@@ -67,6 +71,11 @@ struct BlipDetailView: View {
         }
         .sheet(isPresented: $showMembers) {
             MembersSheet(blip: blip)
+        }
+        .fullScreenCover(isPresented: $showCapture) {
+            NavigationStack {
+                CaptureView(blip: blip, onPosted: { showCapture = false })
+            }
         }
     }
 

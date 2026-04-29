@@ -1,11 +1,14 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
+import { isQuietHourForUser } from "./utils/quietHours";
 
 /**
  * Scheduled hourly. For each user with an active blip membership and an FCM token,
  * send a "time to blip" notification with a deep link straight into the capture screen.
  *
- * Phase C — wire up after capture pipeline + FCM token registration land.
+ * Skips users whose local hour falls inside their quiet-hours window
+ * (`quietHoursStart`–`quietHoursEnd` on the user doc, default 23–7).
  */
 export const sendHourlyPrompt = onSchedule(
   {
@@ -14,7 +17,47 @@ export const sendHourlyPrompt = onSchedule(
     region: "us-central1",
   },
   async () => {
-    logger.info("sendHourlyPrompt tick");
-    // TODO: iterate users, respect blip timezones, batch FCM sends.
+    const db = admin.firestore();
+    const messaging = admin.messaging();
+
+    const usersSnap = await db.collection("users").get();
+    let skippedQuiet = 0;
+    let skippedNoToken = 0;
+    let sent = 0;
+
+    const sends: Promise<unknown>[] = [];
+    for (const doc of usersSnap.docs) {
+      const data = doc.data();
+      const tokens: string[] = data.fcmTokens ?? [];
+      if (tokens.length === 0) {
+        skippedNoToken++;
+        continue;
+      }
+
+      if (isQuietHourForUser(data)) {
+        skippedQuiet++;
+        continue;
+      }
+
+      sends.push(
+        messaging.sendEachForMulticast({
+          tokens,
+          notification: {
+            title: "time to blip",
+            body: "two seconds. capture what you're up to.",
+          },
+          data: { deepLink: "blip://capture" },
+        }),
+      );
+      sent++;
+    }
+
+    await Promise.all(sends);
+    logger.info("sendHourlyPrompt done", {
+      total: usersSnap.size,
+      sent,
+      skippedQuiet,
+      skippedNoToken,
+    });
   },
 );

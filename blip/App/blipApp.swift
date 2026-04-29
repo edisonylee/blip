@@ -7,6 +7,7 @@ struct blipApp: App {
     @StateObject private var auth = AuthService()
     @StateObject private var repo = BlipRepository()
     @StateObject private var moderation = ModerationService()
+    @StateObject private var users = UserRepository()
 
     var body: some Scene {
         WindowGroup {
@@ -14,6 +15,7 @@ struct blipApp: App {
                 .environmentObject(auth)
                 .environmentObject(repo)
                 .environmentObject(moderation)
+                .environmentObject(users)
                 .preferredColorScheme(.dark)
         }
     }

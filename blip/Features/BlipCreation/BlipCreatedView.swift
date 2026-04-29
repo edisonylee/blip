@@ -73,7 +73,7 @@ struct BlipCreatedView: View {
         BlipCreatedView(
             blip: Blip(
                 id: "1",
-                name: "Friend group chat # 1 :)",
+                name: "Friend blipchat # 1 :)",
                 ownerUid: "u",
                 members: ["u"],
                 size: 4,

@@ -5,11 +5,37 @@ See setlog-research/setlog-research.md for full context.
 
 ## Core mechanic
 
-1. User creates a group chat ("blip") and invites friends.
+1. User creates a blipchat (group chat where every member contributes 2-sec clips) and invites friends. A "blip" = the blipchat itself; a "blip clip" = the 2-sec video.
 2. Every hour, each member records a **2-second** video clip of what they're doing.
 3. Hours where **no** member contributed are **skipped** on export (auto-removed from the stitched video).
 4. Anyone can **export** the blip at any time → a single savable video stitched from every contributed hour's clips.
 5. **Layout grid** within an hour adapts to participant count: 1×1 (1), 2×1 (2), 2×2 (3–4), and **dynamically grows columns/rows past 4** (e.g. 3-wide for 5–6, etc.) so larger groups still fit cleanly.
+
+## Progressive completion notifications
+
+When a member posts a clip in a blipchat, the remaining members get a fan-out push that surfaces the running count for the current hour. The final unposted member gets a dedicated "last one" callout — that's the conversion lever for filling the hour.
+
+- **Bucket:** "this hour" = the **blipchat's local hour** at the time of the post (single source of truth — same hour the stitch uses). A clip's `hour` field is the poster's local hour and stays as-is for grid/export, but the nudge groups by blipchat TZ.
+- **Self-suppress:** the poster never gets a nudge for their own post.
+- **Throttle by group size:**
+  - **2–4 members:** notify on every post (small enough that each ping carries signal).
+  - **5+ members:** notify only at milestones — *halfway* (≥50% posted) and *last one*. Avoids 9 pings in a 10-person blipchat.
+  - **Last-one** always fires, regardless of size — that's the highest-value moment.
+- **Group complete:** silent — don't ping after 100%. The in-app card already reflects it; an extra push is noise.
+- **Hourly base prompt** (top of hour, from `sendHourlyPrompt`) only fires for members who haven't posted yet in the current blipchat-TZ hour; the body includes the running count.
+- **Quiet hours:** every notification path respects the recipient's quiet window (already enforced in the cron; same check applies in the per-post fan-out).
+
+Copy lives in [.claude/agents/copy-writer.md](.claude/agents/copy-writer.md) — Lane A voice, group-first.
+
+## Camera-tab capture flow (global capture)
+
+Snapchat-style. Bottom-left "camera" tab on Home opens a record-first surface; on stop, a multi-select picker lists every blipchat the user is in. Fan-out writes one clip doc per selected blipchat (`sharedToBlipIds` already models this).
+
+- **Capture order:** record → pick blipchats → send.
+- **Default selection:** all unchecked.
+- **Hour binding:** the clip lands in the **user's local hour** at upload time. Each blipchat's stitch boundary is its own TZ, but the clip's `hour` is the *poster's* hour — sleep hours just become empty hours that the export auto-skips per core mechanic.
+- **Re-record window:** until the user's local hour rolls over, posting again replaces the previous clip in any blipchat selected this hour.
+- **Source:** camera capture only — no library import in v1.
 
 ## Active decisions
 

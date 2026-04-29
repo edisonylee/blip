@@ -23,7 +23,7 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSCameraUsageDescription</key>
-	<string>blip uses your camera to record your daily clips for your group log.</string>
+	<string>blip uses your camera to record your daily clips for your group's blip.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>blip uses your microphone so your clips have sound.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

@@ -59,7 +59,7 @@ service cloud.firestore {
         }
       }
 
-      // Group chat (screen-11)
+      // Blipchat text thread (screen-11)
       match /messages/{msgId} {
         allow read: if request.auth != null
                     && request.auth.uid in get(/databases/$(database)/documents/blips/$(blipId)).data.members;

@@ -69,7 +69,7 @@ targets:
         product: FirebaseMessaging
     entitlements:
       path: blip/blip.entitlements
-      properties:
-        com.apple.developer.applesignin:
-          - Default
-        aps-environment: development
+      properties: {}
+      # Restore when on paid Apple Developer Program:
+      # com.apple.developer.applesignin: [Default]
+      # aps-environment: development
