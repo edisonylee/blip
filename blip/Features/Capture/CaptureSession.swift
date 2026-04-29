@@ -108,10 +108,10 @@ final class CaptureSession: ObservableObject {
                         session.addOutput(movieOutput)
                     }
 
-                    // Vertical 9:16 framing.
+                    // Landscape 16:9 framing — phone held in portrait, captured frame is landscape.
                     if let connection = movieOutput.connection(with: .video) {
                         if #available(iOS 17, *) {
-                            connection.videoRotationAngle = 90  // portrait
+                            connection.videoRotationAngle = 0  // landscape right (native sensor)
                         }
                         if connection.isVideoMirroringSupported {
                             connection.isVideoMirrored = device.position == .front

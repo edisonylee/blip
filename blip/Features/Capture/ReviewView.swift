@@ -29,7 +29,7 @@ struct ReviewView: View {
 
             VStack(spacing: 16) {
                 clipPreview
-                    .frame(maxHeight: 380)
+                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .padding(.horizontal, 16)
 
@@ -188,7 +188,7 @@ private struct VideoPreview: UIViewControllerRepresentable {
         let vc = AVPlayerViewController()
         vc.player = queuePlayer
         vc.showsPlaybackControls = false
-        vc.videoGravity = .resizeAspectFill
+        vc.videoGravity = .resizeAspect
         queuePlayer.play()
         return vc
     }

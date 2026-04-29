@@ -14,8 +14,10 @@ enum SyntheticClip {
 
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
 
-        let width = 720
-        let height = 1280
+        // Landscape 16:9 to match the real capture path (CaptureSession uses
+        // videoRotationAngle = 0 = native sensor landscape).
+        let width = 1280
+        let height = 720
 
         let videoSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,

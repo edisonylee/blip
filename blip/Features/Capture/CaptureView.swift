@@ -21,9 +21,11 @@ struct CaptureView: View {
             Color.black.ignoresSafeArea()
 
             // Preview only renders for real cameras. Synthetic mode = no preview, just the record button.
+            // Landscape 16:9 letterbox, centered. Black bars top/bottom in portrait orientation.
             if !session.useSynthetic && (session.state == .ready || session.state == .recording) {
                 CapturePreview(session: session.session)
-                    .ignoresSafeArea()
+                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
             #if DEBUG
