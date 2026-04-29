@@ -8,3 +8,5 @@ admin.initializeApp();
 export { onClipUpload } from "./onClipUpload";
 export { exportStitch } from "./exportStitch";
 export { sendHourlyPrompt } from "./sendHourlyPrompt";
+export { deleteAccount } from "./deleteAccount";
+export { onReport } from "./onReport";

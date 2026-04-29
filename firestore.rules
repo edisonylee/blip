@@ -10,8 +10,8 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Logs — only members can read; only owner can update size/name; members can self-leave.
-    match /logs/{logId} {
+    // Blips — only members can read; only owner can update size/name; members can self-leave.
+    match /blips/{blipId} {
       allow read: if request.auth != null
                   && request.auth.uid in resource.data.members;
 
@@ -33,16 +33,16 @@ service cloud.firestore {
       // Members can read.
       match /days/{dateKey} {
         allow read: if request.auth != null
-                    && request.auth.uid in get(/databases/$(database)/documents/logs/$(logId)).data.members;
+                    && request.auth.uid in get(/databases/$(database)/documents/blips/$(blipId)).data.members;
         allow write: if false;
 
         match /clips/{clipId} {
           allow read: if request.auth != null
-                      && request.auth.uid in get(/databases/$(database)/documents/logs/$(logId)).data.members;
+                      && request.auth.uid in get(/databases/$(database)/documents/blips/$(blipId)).data.members;
 
           allow create: if request.auth != null
                         && request.resource.data.uid == request.auth.uid
-                        && request.auth.uid in get(/databases/$(database)/documents/logs/$(logId)).data.members
+                        && request.auth.uid in get(/databases/$(database)/documents/blips/$(blipId)).data.members
                         && request.resource.data.hour is int
                         && request.resource.data.hour >= 0
                         && request.resource.data.hour <= 23
@@ -62,10 +62,10 @@ service cloud.firestore {
       // Group chat (screen-11)
       match /messages/{msgId} {
         allow read: if request.auth != null
-                    && request.auth.uid in get(/databases/$(database)/documents/logs/$(logId)).data.members;
+                    && request.auth.uid in get(/databases/$(database)/documents/blips/$(blipId)).data.members;
         allow create: if request.auth != null
                       && request.resource.data.uid == request.auth.uid
-                      && request.auth.uid in get(/databases/$(database)/documents/logs/$(logId)).data.members;
+                      && request.auth.uid in get(/databases/$(database)/documents/blips/$(blipId)).data.members;
         allow update, delete: if request.auth != null && request.auth.uid == resource.data.uid;
       }
     }

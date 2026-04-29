@@ -1,6 +1,7 @@
 import AuthenticationServices
 import CryptoKit
 import FirebaseAuth
+import FirebaseFunctions
 import Foundation
 import UIKit
 
@@ -103,6 +104,50 @@ final class AuthService: NSObject, ObservableObject {
         try? Auth.auth().signOut()
     }
 
+    // MARK: - Account deletion (App Store requirement for SIWA apps)
+
+    /// Re-authenticates the user (Apple), then calls the `deleteAccount` Cloud Function
+    /// which removes Firestore docs, Storage clips, blip memberships, and the auth user.
+    func deleteAccount() async throws {
+        guard let user = Auth.auth().currentUser else {
+            throw AuthError.notSignedIn
+        }
+
+        // Re-auth confirms identity in front of a destructive action and refreshes
+        // the ID token so the callable function sees fresh auth.
+        if user.providerData.contains(where: { $0.providerID == "apple.com" }) {
+            try await reauthenticateWithApple(user: user)
+        }
+
+        let functions = Functions.functions(region: "us-central1")
+        _ = try await functions.httpsCallable("deleteAccount").call()
+
+        // Server-side admin.auth().deleteUser already invalidated the session;
+        // signing out clears local cached state.
+        try? Auth.auth().signOut()
+    }
+
+    private func reauthenticateWithApple(user: User) async throws {
+        let nonce = Self.randomNonce()
+        currentNonce = nonce
+
+        let provider = ASAuthorizationAppleIDProvider()
+        let request = provider.createRequest()
+        request.requestedScopes = [.fullName, .email]
+        request.nonce = Self.sha256(nonce)
+
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = self
+        controller.presentationContextProvider = self
+
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            siwaContinuation = cont
+            // Hand off to the existing delegate; on success it will sign in / re-link.
+            // Firebase treats a fresh signIn as recent auth, satisfying delete() if we ever fall back to client-side delete.
+            controller.performRequests()
+        }
+    }
+
     // MARK: - Nonce helpers
 
     private static func randomNonce(length: Int = 32) -> String {
@@ -192,11 +237,14 @@ extension AuthService: ASAuthorizationControllerPresentationContextProviding {
 
 enum AuthError: LocalizedError {
     case invalidAppleCredential
+    case notSignedIn
 
     var errorDescription: String? {
         switch self {
         case .invalidAppleCredential:
             return "Sign in with Apple returned an invalid credential."
+        case .notSignedIn:
+            return "You're not signed in."
         }
     }
 }

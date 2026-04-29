@@ -1,7 +1,7 @@
 import Foundation
 
-/// One day's worth of activity for a single log. Documents live at logs/{logId}/days/{yyyy-MM-dd}.
-/// `dateKey` is the local date in the log's timezone, since the day runs 4AM→4AM there.
+/// One day's worth of activity for a single blip. Documents live at blips/{blipId}/days/{yyyy-MM-dd}.
+/// `dateKey` is the local date in the blip's timezone, since the day runs 4AM→4AM there.
 struct BlipDay: Codable, Identifiable, Hashable {
     let id: String                  // "yyyy-MM-dd" key
     var dateKey: String { id }

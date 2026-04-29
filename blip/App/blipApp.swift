@@ -5,11 +5,15 @@ import FirebaseCore
 struct blipApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var auth = AuthService()
+    @StateObject private var repo = BlipRepository()
+    @StateObject private var moderation = ModerationService()
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environmentObject(auth)
+                .environmentObject(repo)
+                .environmentObject(moderation)
                 .preferredColorScheme(.dark)
         }
     }

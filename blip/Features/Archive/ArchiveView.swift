@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Past logs — list view per group, tap into a past day's stitched vlog (per §6 open item).
+/// Past blips — list view per group, tap into a past day's stitched vlog (per §6 open item).
 struct ArchiveView: View {
-    let logId: String
+    let blipId: String
 
     var body: some View {
         Text("archive — Phase C")

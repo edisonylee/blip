@@ -2,7 +2,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as logger from "firebase-functions/logger";
 
 /**
- * Scheduled hourly. For each user with an active log membership and an FCM token,
+ * Scheduled hourly. For each user with an active blip membership and an FCM token,
  * send a "time to blip" notification with a deep link straight into the capture screen.
  *
  * Phase C — wire up after capture pipeline + FCM token registration land.
@@ -15,6 +15,6 @@ export const sendHourlyPrompt = onSchedule(
   },
   async () => {
     logger.info("sendHourlyPrompt tick");
-    // TODO: iterate users, respect log timezones, batch FCM sends.
+    // TODO: iterate users, respect blip timezones, batch FCM sends.
   },
 );

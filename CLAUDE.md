@@ -5,10 +5,10 @@ See setlog-research/setlog-research.md for full context.
 
 ## Core mechanic
 
-1. User creates a group chat ("log") and invites friends.
+1. User creates a group chat ("blip") and invites friends.
 2. Every hour, each member records a **2-second** video clip of what they're doing.
 3. Hours where **no** member contributed are **skipped** on export (auto-removed from the stitched video).
-4. Anyone can **export** the log at any time → a single savable video stitched from every contributed hour's clips.
+4. Anyone can **export** the blip at any time → a single savable video stitched from every contributed hour's clips.
 5. **Layout grid** within an hour adapts to participant count: 1×1 (1), 2×1 (2), 2×2 (3–4), and **dynamically grows columns/rows past 4** (e.g. 3-wide for 5–6, etc.) so larger groups still fit cleanly.
 
 ## Active decisions
@@ -23,7 +23,7 @@ See setlog-research/setlog-research.md for full context.
 - **MVP scope:** Full Setlog parity (all 11 documented flows + export + archive)
 - **v0 UX divergence:** §4.2 live group card only — other §4 fixes deferred
 - **Brand:** US-native original identity (not Korean-indie homage)
-- **Day boundary:** 4AM in the *log's* timezone (not per-user) — set at log creation, defaults to creator's TZ
+- **Day boundary:** 4AM in the *blip's* timezone (not per-user) — set at blip creation, defaults to creator's TZ
 
 ## Reference
 

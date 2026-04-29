@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// Reusable card used on the Home screen for both the solo "vlog" and group logs.
+/// Reusable card used on the Home screen for both the solo "vlog" and group blips.
 /// When `progress` is provided, the §4.2 live treatment renders (ring + member dots + countdown).
-struct LogCard: View {
+struct BlipCard: View {
     let title: String
     let subtitle: String
-    let progress: LogCardProgress?
+    let progress: BlipCardProgress?
 
     var body: some View {
         HStack(spacing: 16) {
@@ -29,7 +29,7 @@ struct LogCard: View {
     }
 }
 
-struct LogCardProgress {
+struct BlipCardProgress {
     /// 0...1 fraction of members who have posted in the current hour.
     var hourCompletion: Double
     /// Member display info for avatar dots.
@@ -45,7 +45,7 @@ struct LogCardProgress {
 }
 
 private struct LiveProgressIndicator: View {
-    let progress: LogCardProgress
+    let progress: BlipCardProgress
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
@@ -76,16 +76,16 @@ private struct LiveProgressIndicator: View {
 }
 
 #Preview("Solo (no progress)") {
-    LogCard(title: "vlog", subtitle: "your space. each day runs 4am to 4am.", progress: nil)
+    BlipCard(title: "vlog", subtitle: "your space. each day runs 4am to 4am.", progress: nil)
         .padding()
         .background(Color.black)
 }
 
 #Preview("Group (live)") {
-    LogCard(
+    BlipCard(
         title: "spring break crew",
         subtitle: "4 of 6 captured this hour",
-        progress: LogCardProgress(
+        progress: BlipCardProgress(
             hourCompletion: 4.0 / 6.0,
             members: [
                 .init(id: "1", initials: "ED", hasPostedThisHour: true),

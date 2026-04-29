@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Screen-11 parity placeholder.
 struct ChatView: View {
-    let logId: String
+    let blipId: String
 
     var body: some View {
         Text("chat — Phase C")

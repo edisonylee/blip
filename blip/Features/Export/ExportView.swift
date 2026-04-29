@@ -3,7 +3,7 @@ import SwiftUI
 /// Priority-1 screen — design lands once Setlog's actual export/TikTok handoff is documented
 /// (parallel research track per the plan).
 struct ExportView: View {
-    let logId: String
+    let blipId: String
     let dateKey: String
 
     var body: some View {

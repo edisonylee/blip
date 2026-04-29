@@ -36,7 +36,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
-        NSCameraUsageDescription: "blip uses your camera to record your daily clips for your group log."
+        NSCameraUsageDescription: "blip uses your camera to record your daily clips for your group's blip."
         NSMicrophoneUsageDescription: "blip uses your microphone so your clips have sound."
         NSPhotoLibraryAddUsageDescription: "Save the day's stitched vlog to your photos."
         UILaunchScreen:

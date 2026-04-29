@@ -1,8 +1,8 @@
 import Foundation
 
-/// A "log" — Setlog's term for a shared room of up to 12 friends.
-/// Day boundary is 4AM in the log's timezone (not per-user).
-struct BlipLog: Codable, Identifiable, Hashable {
+/// A "blip" — a shared room of up to 12 friends.
+/// Day boundary is 4AM in the blip's timezone (not per-user).
+struct Blip: Codable, Identifiable, Hashable {
     let id: String
     var name: String
     var ownerUid: String
@@ -14,7 +14,7 @@ struct BlipLog: Codable, Identifiable, Hashable {
     var createdAt: Date
 }
 
-extension BlipLog {
+extension Blip {
     /// True for the special solo "vlog" space that's auto-created per user (parity with screen-01).
     var isSolo: Bool { size == 1 }
 }

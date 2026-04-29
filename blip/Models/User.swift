@@ -8,4 +8,6 @@ struct BlipUser: Codable, Identifiable, Hashable {
     var fcmTokens: [String]
     var createdAt: Date
     var updatedAt: Date
+    /// uids this user has blocked. Feed/clip queries client-filter against this set.
+    var blockedUsers: [String] = []
 }
