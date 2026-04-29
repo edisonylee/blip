@@ -1,0 +1,40 @@
+# macOS
+.DS_Store
+
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad
+xcuserdata/
+xcshareddata/WorkspaceSettings.xcsettings
+
+# XcodeGen — .xcodeproj is generated from project.yml; do NOT commit
+blip.xcodeproj/
+
+# Swift Package Manager
+.swiftpm/
+.swiftpm-cache/
+.build/
+Package.resolved
+
+# Firebase
+GoogleService-Info.plist
+.firebase/
+*.local
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Cloud Functions
+functions/node_modules/
+functions/lib/
+functions/.env
+functions/.env.local
+
+# Node / npm
+node_modules/
+
+# Editor
+.vscode/
+.idea/
