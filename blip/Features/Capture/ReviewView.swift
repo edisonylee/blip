@@ -1,4 +1,5 @@
 import AVKit
+import FirebaseFirestore
 import SwiftUI
 
 /// Screen-08 parity (post-record half) — playback + timestamp overlay + "send to:" picker + post.
@@ -151,8 +152,20 @@ struct ReviewView: View {
             return
         }
         postError = nil
+
+        // Pre-flight membership check. Re-fetches the blip so a stale local copy
+        // can't smuggle the upload past Storage rules with a clearer error here.
         Task {
             do {
+                let snapshot = try await Firestore.firestore()
+                    .collection("blips").document(blip.id).getDocument()
+                let liveMembers = (snapshot.data()?["members"] as? [String]) ?? []
+                print("[blip-post] uid=\(uid) blipId=\(blip.id) liveMembers=\(liveMembers)")
+                guard liveMembers.contains(uid) else {
+                    postError = "you're not a member of this blip — try the join code."
+                    return
+                }
+
                 try await uploader.upload(
                     fileURL: fileURL,
                     uid: uid,

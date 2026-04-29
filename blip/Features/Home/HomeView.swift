@@ -157,6 +157,8 @@ private enum CreationDestination: String, Identifiable {
     var id: String { rawValue }
 }
 
+/// No wordmark — per mood-principles.md signature move, the app is confident
+/// enough not to brand itself to its own users. Just the two affordances.
 private struct HomeHeader: View {
     let onProfile: () -> Void
     let onPlus: () -> Void
@@ -169,10 +171,6 @@ private struct HomeHeader: View {
                     .frame(width: 36, height: 36)
                     .background(BlipColor.surface, in: Circle())
             }
-            Spacer()
-            Text("blip")
-                .font(BlipTypography.wordmark)
-                .foregroundStyle(BlipColor.accent)
             Spacer()
             Button(action: onPlus) {
                 Image(systemName: "plus")

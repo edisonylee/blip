@@ -16,8 +16,8 @@ struct ProfileView: View {
 
             VStack(spacing: 24) {
                 Text("settings")
-                    .font(BlipTypography.wordmark)
-                    .foregroundStyle(BlipColor.accent)
+                    .font(BlipTypography.title)
+                    .foregroundStyle(BlipColor.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
@@ -176,8 +176,8 @@ private struct QuietHoursSheet: View {
                 }
                 ToolbarItem(placement: .principal) {
                     Text("quiet hours")
-                        .font(BlipTypography.title)
-                        .foregroundStyle(BlipColor.accent)
+                        .font(BlipTypography.body)
+                        .foregroundStyle(BlipColor.textPrimary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("save") {

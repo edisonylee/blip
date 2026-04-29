@@ -50,7 +50,9 @@ struct CreateBlipView: View {
                     }
                 }
                 ToolbarItem(placement: .principal) {
-                    Text("blip").font(BlipTypography.title).foregroundStyle(BlipColor.accent)
+                    Text("new blip")
+                        .font(BlipTypography.body)
+                        .foregroundStyle(BlipColor.textPrimary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: submit) {

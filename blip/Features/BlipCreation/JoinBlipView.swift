@@ -55,7 +55,9 @@ struct JoinBlipView: View {
                     }
                 }
                 ToolbarItem(placement: .principal) {
-                    Text("blip").font(BlipTypography.title).foregroundStyle(BlipColor.accent)
+                    Text("join")
+                        .font(BlipTypography.body)
+                        .foregroundStyle(BlipColor.textPrimary)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: submit) {

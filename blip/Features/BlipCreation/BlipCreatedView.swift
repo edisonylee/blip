@@ -53,7 +53,9 @@ struct BlipCreatedView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Text("blip").font(BlipTypography.title).foregroundStyle(BlipColor.accent)
+                Text("created")
+                    .font(BlipTypography.body)
+                    .foregroundStyle(BlipColor.textPrimary)
             }
         }
         .toolbarBackground(BlipColor.background, for: .navigationBar)
