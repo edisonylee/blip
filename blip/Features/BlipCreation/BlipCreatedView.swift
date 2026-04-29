@@ -16,15 +16,11 @@ struct BlipCreatedView: View {
                     .font(BlipTypography.title)
                     .foregroundStyle(BlipColor.textPrimary)
 
-                HStack(spacing: 6) {
-                    Text("#")
-                        .foregroundStyle(BlipColor.textSecondary)
-                    Text(blip.joinCode)
-                        .font(.system(size: 18, weight: .regular, design: .monospaced))
-                        .foregroundStyle(BlipColor.textPrimary)
-                        .textSelection(.enabled)
-                }
-                .padding(.top, 4)
+                Text(blip.joinCode)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(BlipColor.textSecondary)
+                    .textSelection(.enabled)
+                    .padding(.top, 4)
 
                 Button { showShareSheet = true } label: {
                     HStack(spacing: 6) {

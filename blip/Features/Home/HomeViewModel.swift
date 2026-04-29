@@ -13,7 +13,7 @@ final class HomeViewModel: ObservableObject {
 
     func progress(for blip: Blip) -> BlipCardProgress {
         BlipCardProgress(
-            hourCompletion: 0,
+            hourCompletion: nil,
             members: blip.members.map { uid in
                 BlipCardProgress.Member(
                     id: uid,

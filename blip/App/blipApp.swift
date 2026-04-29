@@ -48,13 +48,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     ) -> Bool {
         FirebaseApp.configure()
 
-        // Bypass APNs/reCAPTCHA in debug — settings starts nil in SDK 11.x so we must
-        // create it explicitly; optional-chaining silently does nothing on nil.
-        // Use Firebase Console test numbers: Authentication → Phone → Test phone numbers.
+        // Bypass APNs/reCAPTCHA in debug — disables app verification for phone auth using Firebase Console test numbers.
         #if DEBUG
-        let authSettings = AuthSettings()
-        authSettings.isAppVerificationDisabledForTesting = true
-        Auth.auth().settings = authSettings
+        // In recent FirebaseAuth versions, AuthSettings initializer is internal; use the existing optional instance.
+        // This disables APNs/reCAPTCHA for phone auth in debug when using Firebase Console test numbers.
+        Auth.auth().settings?.isAppVerificationDisabledForTesting = true
         #endif
 
         // FCM <-> APNs registration. The aps-environment entitlement is required for

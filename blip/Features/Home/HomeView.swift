@@ -19,7 +19,6 @@ struct HomeView: View {
         NavigationStack(path: $path) {
             ZStack {
                 BlipColor.background.ignoresSafeArea()
-                DoodleBackground(intensity: 0.6)
 
                 VStack(spacing: 0) {
                     HomeHeader(
@@ -217,6 +216,7 @@ private struct HomeHeader: View {
                     .frame(width: 40, height: 40)
                     .background(BlipColor.surface, in: Circle())
             }
+            .accessibilityLabel("Create or join a blip")
         }
         .padding(.horizontal, 16)
     }

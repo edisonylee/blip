@@ -64,29 +64,32 @@ private struct LiveRing: View {
     let progress: BlipCardProgress
 
     var body: some View {
-        ZStack {
-            Circle()
-                .stroke(BlipColor.progressTrack, lineWidth: 3)
-            Circle()
-                .trim(from: 0, to: progress.hourCompletion)
-                .stroke(
-                    progress.hourCompletion >= 1 ? Color.green : BlipColor.progressFill,
-                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-                .animation(.spring(duration: 0.6), value: progress.hourCompletion)
-            Text("\(Int(progress.hourCompletion * 100))")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundStyle(BlipColor.textPrimary)
+        if let completion = progress.hourCompletion {
+            ZStack {
+                Circle()
+                    .stroke(BlipColor.progressTrack, lineWidth: 3)
+                Circle()
+                    .trim(from: 0, to: completion)
+                    .stroke(
+                        completion >= 1 ? Color.green : BlipColor.progressFill,
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .animation(.spring(duration: 0.6), value: completion)
+                Text("\(Int(completion * 100))")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(BlipColor.textPrimary)
+            }
+            .frame(width: 34, height: 34)
         }
-        .frame(width: 34, height: 34)
     }
 }
 
 // MARK: - Data
 
 struct BlipCardProgress {
-    var hourCompletion: Double
+    /// nil = completion unknown (no clip data loaded); ring is hidden.
+    var hourCompletion: Double?
     var members: [Member]
     var secondsToNextPrompt: Int
 
@@ -105,7 +108,7 @@ struct BlipCardProgress {
         subtitle: "0 of 4 posted",
         memberCount: 4,
         progress: BlipCardProgress(
-            hourCompletion: 0,
+            hourCompletion: nil,
             members: [
                 .init(id: "1", initials: "ED", hasPostedThisHour: false),
                 .init(id: "2", initials: "LJ", hasPostedThisHour: false),
@@ -125,7 +128,7 @@ struct BlipCardProgress {
         subtitle: "3 of 4 posted this hour",
         memberCount: 4,
         progress: BlipCardProgress(
-            hourCompletion: 3.0 / 4.0,
+            hourCompletion: 3.0 / 4.0,  // known value — ring shows
             members: [
                 .init(id: "1", initials: "ED", hasPostedThisHour: true),
                 .init(id: "2", initials: "LJ", hasPostedThisHour: true),

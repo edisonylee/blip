@@ -14,8 +14,7 @@ final class CreateBlipViewModel: ObservableObject {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    func submit(auth: AuthService, repo: BlipRepository) {
-        guard case .signedIn(let uid) = auth.state else { return }
+    func submit(uid: String, repo: any BlipMutating) {
         isSubmitting = true
         errorMessage = nil
         Task {

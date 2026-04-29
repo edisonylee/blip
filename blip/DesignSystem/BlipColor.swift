@@ -57,6 +57,14 @@ enum BlipColor {
     /// one moment that matters (record, send, stitch). Per mood-principles §6.
     static let accent = Color(red: 0.91, green: 0.66, blue: 0.49)   // #E8A87C
 
+    // MARK: - Semantic states
+
+    /// Inline error text. Warm rose — readable on both dark and light surfaces.
+    static let error = adaptive(
+        dark:  0xE87070,
+        light: 0xC93535
+    )
+
     // MARK: - Progress ring
 
     static let progressTrack = Color(uiColor: UIColor { t in

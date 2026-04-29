@@ -10,6 +10,7 @@ struct BlipDetailView: View {
     @StateObject private var clips = ClipsRepository()
 
     @State private var showShareSheet = false
+    @State private var showInviteSheet = false
     @State private var showMembers = false
     @State private var showCapture = false
     @State private var captionEditingClip: BlipClip?
@@ -29,22 +30,20 @@ struct BlipDetailView: View {
                     }
                     .buttonStyle(.plain)
 
-                    // Posted clips for hours other than the current hour
+                    // Posted clips grouped by hour, max 12 per hour in an adaptive grid
                     ForEach(otherHoursWithClips, id: \.self) { hour in
-                        ForEach(clips.clipsByHour[hour] ?? []) { clip in
-                            PostedClipSlot(clip: clip)
-                                .clipContextMenu(
-                                    clip: clip,
-                                    isAuthor: isAuthor(of: clip),
-                                    onDelete: { Task { try? await clips.deleteClip(clip) } },
-                                    onEditCaption: { captionEditingClip = clip }
-                                )
-                        }
+                        HourClipGrid(
+                            clips: Array((clips.clipsByHour[hour] ?? []).prefix(12)),
+                            hour: hour,
+                            isAuthor: isAuthor(of:),
+                            onDelete: { clip in Task { try? await clips.deleteClip(clip) } },
+                            onEditCaption: { clip in captionEditingClip = clip }
+                        )
                     }
 
                     // Invite-a-friend placeholders for empty member seats
                     ForEach(0..<emptySeatCount, id: \.self) { _ in
-                        InviteSlot()
+                        InviteSlot { showInviteSheet = true }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -99,7 +98,10 @@ struct BlipDetailView: View {
         }
         .toolbarBackground(BlipColor.background, for: .navigationBar)
         .sheet(isPresented: $showShareSheet) {
-            ShareSheet(activityItems: ["join my blip \"\(blip.name)\" — code: \(blip.joinCode)"])
+            ShareSheet(activityItems: [inviteShareText])
+        }
+        .sheet(isPresented: $showInviteSheet) {
+            ShareSheet(activityItems: [inviteShareText])
         }
         .sheet(isPresented: $showMembers) {
             MembersSheet(blip: blip)
@@ -116,6 +118,10 @@ struct BlipDetailView: View {
         }
     }
 
+    private var inviteShareText: String {
+        "join my blip \"\(blip.name)\" — code: \(blip.joinCode)"
+    }
+
     private func isAuthor(of clip: BlipClip) -> Bool {
         guard case .signedIn(let uid) = auth.state else { return false }
         return clip.uid == uid
@@ -126,8 +132,8 @@ struct BlipDetailView: View {
     }
 
     private var currentUserInitials: String {
-        guard case .signedIn(let uid) = auth.state else { return "?" }
-        return String(uid.prefix(2)).uppercased()
+        guard case .signedIn(_) = auth.state else { return "?" }
+        return "me"
     }
 
     private var currentHour: Int {
@@ -234,54 +240,105 @@ private struct YourSlot: View {
     }
 }
 
+// MARK: - Hour clip grid (max 12 frames, adaptive columns per CLAUDE.md layout spec)
+
+private struct HourClipGrid: View {
+    let clips: [BlipClip]
+    let hour: Int
+    let isAuthor: (BlipClip) -> Bool
+    let onDelete: (BlipClip) -> Void
+    let onEditCaption: (BlipClip) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(String(format: "%02d:00", hour))
+                .font(BlipTypography.timeLabel)
+                .foregroundStyle(BlipColor.textTertiary)
+                .padding(.horizontal, 4)
+
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: columnCount),
+                spacing: 4
+            ) {
+                ForEach(clips) { clip in
+                    PostedClipSlot(clip: clip)
+                        .aspectRatio(16.0 / 9.0, contentMode: .fill)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .clipContextMenu(
+                            clip: clip,
+                            isAuthor: isAuthor(clip),
+                            onDelete: { onDelete(clip) },
+                            onEditCaption: { onEditCaption(clip) }
+                        )
+                }
+            }
+        }
+    }
+
+    /// Column count follows the CLAUDE.md layout grid spec:
+    /// 1×1 (1), 2×1 (2), 2×2 (3–4), 3-wide (5–9), 4-wide (10–12).
+    private var columnCount: Int {
+        switch clips.count {
+        case 1:     return 1
+        case 2:     return 2
+        case 3...4: return 2
+        case 5...9: return 3
+        default:    return 4
+        }
+    }
+}
+
 private struct PostedClipSlot: View {
     let clip: BlipClip
 
     var body: some View {
         ZStack {
             ClipPlayerView(url: clip.videoUrl)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .overlay(alignment: .topLeading) {
             Circle()
                 .fill(BlipColor.accent)
-                .frame(width: 24, height: 24)
+                .frame(width: 20, height: 20)
                 .overlay(
                     Text(String(clip.uid.prefix(2)).uppercased())
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 8, weight: .bold))
                         .foregroundStyle(.black)
                 )
-                .padding(12)
+                .padding(8)
         }
-        .overlay(alignment: .top) {
-            Text(String(format: "%02d:00", clip.hour))
-                .font(BlipTypography.clipTimestamp)
-                .foregroundStyle(.white)
-                .shadow(radius: 4, y: 1)
-                .padding(.top, 14)
-        }
-        .frame(height: 220)
     }
 }
 
 private struct InviteSlot: View {
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(BlipColor.surface)
+    let onInvite: () -> Void
 
-            VStack(spacing: 8) {
-                Image(systemName: "plus")
-                    .font(.title2)
-                    .foregroundStyle(BlipColor.textPrimary)
-                    .frame(width: 36, height: 36)
-                    .background(BlipColor.surfaceElevated, in: Circle())
-                Text("invite a friend")
-                    .font(BlipTypography.caption)
-                    .foregroundStyle(BlipColor.textTertiary)
+    var body: some View {
+        Button(action: onInvite) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(BlipColor.surface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [6, 4]))
+                            .foregroundStyle(BlipColor.border)
+                    )
+
+                VStack(spacing: 8) {
+                    Image(systemName: "plus")
+                        .font(.title2)
+                        .foregroundStyle(BlipColor.accent)
+                        .frame(width: 36, height: 36)
+                        .background(BlipColor.surfaceElevated, in: Circle())
+                    Text("invite a friend")
+                        .font(BlipTypography.caption)
+                        .foregroundStyle(BlipColor.textSecondary)
+                }
             }
+            .frame(height: 120)
         }
-        .frame(height: 120)
+        .buttonStyle(.plain)
+        .accessibilityLabel("Invite a friend")
     }
 }
 

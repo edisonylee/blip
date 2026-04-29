@@ -4,14 +4,15 @@ import OSLog
 
 private let log = Logger(subsystem: "app.blip.ios", category: "CaptureSession")
 
-/// Wraps `AVCaptureSession` for recording short selfie-style clips.
+/// Wraps `AVCaptureSession` for recording clips up to `clipDuration` seconds.
 ///
 /// Lifecycle:
 ///   1. `requestPermissions()` — call from a user-initiated tap (App Store policy).
 ///   2. `configure()` — sets up inputs/outputs on the session queue.
 ///   3. `start()` — begin running so the preview layer shows live feed.
-///   4. `record()` — async, returns the file URL of a 2-second clip.
-///   5. `stop()` — tear down when leaving the screen.
+///   4. `record()` — async, returns the file URL when the user stops or the cap is reached.
+///   5. `stopRecording()` — call to end an in-progress recording early.
+///   6. `stop()` — tear down when leaving the screen.
 ///
 /// All `AVCaptureSession` mutation happens on `sessionQueue`, never on the main thread.
 @MainActor
@@ -27,8 +28,11 @@ final class CaptureSession: ObservableObject {
 
     @Published private(set) var state: State = .idle
 
+    /// Seconds elapsed since the current recording started. 0 when not recording.
+    @Published private(set) var recordingElapsed: TimeInterval = 0
+
     /// True when configure() couldn't find a camera and we're in DEBUG. record() will then
-    /// produce a synthetic 2-second clip so the upload + Firestore path remains testable.
+    /// produce a synthetic clip so the upload + Firestore path remains testable.
     @Published private(set) var useSynthetic = false
 
     /// Exposed for `CapturePreview` to attach `AVCaptureVideoPreviewLayer`. Read-only externally.
@@ -37,7 +41,9 @@ final class CaptureSession: ObservableObject {
     private let sessionQueue = DispatchQueue(label: "app.blip.ios.capture", qos: .userInitiated)
     private let movieOutput = AVCaptureMovieFileOutput()
     private let recordingDelegate = MovieRecordingDelegate()
+    private var elapsedTask: Task<Void, Never>?
 
+    /// Maximum clip length. Single source of truth — SyntheticClip, ClipUploader, and UI all read this.
     static let clipDuration: TimeInterval = 2.0
 
     // MARK: - Permissions (call from a user-initiated event only)
@@ -140,6 +146,7 @@ final class CaptureSession: ObservableObject {
     }
 
     func stop() {
+        elapsedTask?.cancel()
         if useSynthetic { return }
         sessionQueue.async { [self] in
             if movieOutput.isRecording { movieOutput.stopRecording() }
@@ -147,16 +154,29 @@ final class CaptureSession: ObservableObject {
         }
     }
 
+    /// Ends an in-progress recording early. The `record()` continuation resolves normally.
+    func stopRecording() {
+        guard state == .recording else { return }
+        sessionQueue.async { [self] in
+            if movieOutput.isRecording { movieOutput.stopRecording() }
+        }
+    }
+
     // MARK: - Recording
 
-    /// Records a clip of `clipDuration` seconds and returns the local file URL.
+    /// Records a clip (up to `clipDuration` seconds) and returns the local file URL.
+    /// The user can end it early by calling `stopRecording()`.
     func record() async throws -> URL {
         guard state == .ready else { throw CaptureError.notReady }
         state = .recording
+        startElapsedTimer()
 
         #if DEBUG
         if useSynthetic {
-            defer { Task { @MainActor in self.state = .ready } }
+            defer {
+                elapsedTask?.cancel()
+                Task { @MainActor in self.state = .ready; self.recordingElapsed = 0 }
+            }
             return try await SyntheticClip.generate()
         }
         #endif
@@ -166,6 +186,9 @@ final class CaptureSession: ObservableObject {
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<URL, Error>) in
             recordingDelegate.completion = { [weak self] result in
                 Task { @MainActor in
+                    self?.elapsedTask?.cancel()
+                    self?.elapsedTask = nil
+                    self?.recordingElapsed = 0
                     self?.state = .ready
                     cont.resume(with: result)
                 }
@@ -174,6 +197,19 @@ final class CaptureSession: ObservableObject {
             sessionQueue.async { [self] in
                 movieOutput.maxRecordedDuration = CMTime(seconds: Self.clipDuration, preferredTimescale: 600)
                 movieOutput.startRecording(to: url, recordingDelegate: recordingDelegate)
+            }
+        }
+    }
+
+    private func startElapsedTimer() {
+        elapsedTask?.cancel()
+        recordingElapsed = 0
+        let start = Date()
+        elapsedTask = Task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                if Task.isCancelled { break }
+                recordingElapsed = Date().timeIntervalSince(start)
             }
         }
     }

@@ -12,7 +12,6 @@ struct CreateBlipView: View {
         NavigationStack {
             ZStack {
                 BlipColor.background.ignoresSafeArea()
-                DoodleBackground(intensity: 0.8)
 
                 VStack(spacing: 0) {
                     header
@@ -32,6 +31,7 @@ struct CreateBlipView: View {
                             .font(.system(size: 16, weight: .medium))
                             .foregroundStyle(BlipColor.textSecondary)
                     }
+                    .accessibilityLabel("Close")
                 }
             }
             .toolbarBackground(BlipColor.background, for: .navigationBar)
@@ -60,33 +60,12 @@ struct CreateBlipView: View {
     private var content: some View {
         VStack(spacing: 28) {
             // Name field
-            VStack(alignment: .leading, spacing: 8) {
-                Text("blip name")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(BlipColor.textTertiary)
-                    .textCase(.uppercase)
-                    .tracking(0.8)
-
-                HStack(spacing: 10) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(BlipColor.accent)
-                        .frame(width: 3, height: 22)
-                    TextField("summer squad, study crew…", text: $vm.name)
-                        .focused($nameFocused)
-                        .submitLabel(.done)
-                        .foregroundStyle(BlipColor.textPrimary)
-                        .font(.system(size: 20, weight: .semibold))
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                }
-                .padding(16)
-                .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(nameFocused ? BlipColor.accent.opacity(0.5) : BlipColor.border, lineWidth: 1)
-                )
-                .animation(.easeOut(duration: 0.2), value: nameFocused)
-            }
+            BlipTextField(
+                label: "blip name",
+                placeholder: "summer squad, study crew…",
+                text: $vm.name,
+                isFocused: $nameFocused
+            )
 
             // Size picker
             VStack(alignment: .leading, spacing: 12) {
@@ -110,7 +89,7 @@ struct CreateBlipView: View {
                         } label: {
                             Text("\(n)")
                                 .font(.system(size: 15, weight: .semibold))
-                                .frame(maxWidth: .infinity, minHeight: 40)
+                                .frame(maxWidth: .infinity, minHeight: 44)
                                 .background(
                                     vm.size == n ? BlipColor.accent : BlipColor.surface,
                                     in: RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -135,7 +114,8 @@ struct CreateBlipView: View {
 
             Button("create blip") {
                 nameFocused = false
-                vm.submit(auth: auth, repo: repo)
+                guard case .signedIn(let uid) = auth.state else { return }
+                vm.submit(uid: uid, repo: repo)
             }
             .blipPrimary(isLoading: vm.isSubmitting)
             .disabled(!vm.isFormValid || vm.isSubmitting)

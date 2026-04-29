@@ -5,16 +5,13 @@ struct JoinBlipView: View {
     @EnvironmentObject private var repo: BlipRepository
     @Environment(\.dismiss) private var dismiss
 
-    @State private var code: String = ""
-    @State private var isSubmitting = false
-    @State private var errorMessage: String?
+    @StateObject private var vm = JoinBlipViewModel()
     @FocusState private var codeFocused: Bool
 
     var body: some View {
         NavigationStack {
             ZStack {
                 BlipColor.background.ignoresSafeArea()
-                DoodleBackground(intensity: 0.8)
 
                 VStack(spacing: 0) {
                     // Header
@@ -31,47 +28,39 @@ struct JoinBlipView: View {
 
                     Spacer()
 
-                    // Code input
                     VStack(alignment: .leading, spacing: 8) {
                         Text("join code")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(BlipColor.textTertiary)
-                            .textCase(.uppercase)
-                            .tracking(0.8)
-
-                        HStack(spacing: 10) {
-                            Text("#")
-                                .font(.system(size: 22, weight: .black, design: .monospaced))
-                                .foregroundStyle(BlipColor.accent)
-                            TextField("c9kz6il", text: $code)
-                                .focused($codeFocused)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .submitLabel(.go)
-                                .onSubmit(submit)
-                                .foregroundStyle(BlipColor.textPrimary)
-                                .font(.system(size: 22, weight: .semibold, design: .monospaced))
-                        }
-                        .padding(16)
-                        .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(codeFocused ? BlipColor.accent.opacity(0.5) : BlipColor.border, lineWidth: 1)
-                        )
-                        .animation(.easeOut(duration: 0.2), value: codeFocused)
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(BlipColor.textSecondary)
+                        TextField("c9kz6il", text: $vm.code)
+                            .textInputAutocapitalization(.none)
+                            .autocorrectionDisabled(true)
+                            .keyboardType(.asciiCapable)
+                            .textContentType(.oneTimeCode)
+                            .submitLabel(.go)
+                            .focused($codeFocused)
+                            .padding(14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(BlipColor.surface)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(BlipColor.border, lineWidth: 1)
+                            )
+                            .onSubmit { submit() }
                     }
                     .padding(.horizontal, 24)
 
                     Spacer()
 
-                    // Footer
                     VStack(spacing: 12) {
-                        ErrorText(message: errorMessage)
+                        ErrorText(message: vm.errorMessage)
 
                         Button("join blip") { submit() }
-                            .blipPrimary(isLoading: isSubmitting)
-                            .disabled(!canSubmit || isSubmitting)
-                            .opacity(canSubmit ? 1 : 0.4)
+                            .blipPrimary(isLoading: vm.isSubmitting)
+                            .disabled(!vm.canSubmit || vm.isSubmitting)
+                            .opacity(vm.canSubmit ? 1 : 0.4)
                             .padding(.horizontal, 24)
                     }
                     .padding(.bottom, 32)
@@ -84,30 +73,20 @@ struct JoinBlipView: View {
                             .font(.system(size: 16, weight: .medium))
                             .foregroundStyle(BlipColor.textSecondary)
                     }
+                    .accessibilityLabel("Close")
                 }
             }
             .toolbarBackground(BlipColor.background, for: .navigationBar)
         }
         .onAppear { codeFocused = true }
-    }
-
-    private var canSubmit: Bool {
-        !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        .onChange(of: vm.didJoin) { _, joined in
+            if joined { dismiss() }
+        }
     }
 
     private func submit() {
         guard case .signedIn(let uid) = auth.state else { return }
-        isSubmitting = true
-        errorMessage = nil
-        Task {
-            do {
-                _ = try await repo.joinBlip(code: code, uid: uid)
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-            isSubmitting = false
-        }
+        vm.submit(uid: uid, repo: repo)
     }
 }
 
@@ -116,3 +95,4 @@ struct JoinBlipView: View {
         .environmentObject(AuthService())
         .environmentObject(BlipRepository())
 }
+

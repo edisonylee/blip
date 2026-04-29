@@ -68,6 +68,7 @@ struct CaptureView: View {
                     .frame(width: 36, height: 36)
                     .background(.black.opacity(0.4), in: Circle())
             }
+            .accessibilityLabel("Dismiss")
             Spacer()
             Text(blip.name)
                 .font(BlipTypography.body)
@@ -115,7 +116,7 @@ struct CaptureView: View {
         case .error(let msg):
             Text(msg)
                 .font(BlipTypography.caption)
-                .foregroundStyle(.red)
+                .foregroundStyle(BlipColor.error)
                 .padding(.horizontal, 32)
         case .ready, .recording:
             EmptyView()

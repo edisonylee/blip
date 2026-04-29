@@ -6,7 +6,7 @@ import OSLog
 private let log = Logger(subsystem: "app.blip.ios", category: "BlipRepository")
 
 @MainActor
-final class BlipRepository: ObservableObject, BlipRepositoryProtocol {
+final class BlipRepository: ObservableObject, BlipRepositoryProtocol, BlipMutating {
     @Published private(set) var blips: [Blip] = []
     @Published private(set) var isLoading = false
     @Published private(set) var lastError: String?

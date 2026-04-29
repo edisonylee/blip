@@ -1,9 +1,7 @@
 import AVKit
-import FirebaseAuth
-import FirebaseFirestore
 import SwiftUI
 
-/// Screen-08 parity (post-record half) — playback + timestamp overlay + "send to:" picker + post.
+/// Post-record screen — playback + destination picker + post.
 struct ReviewView: View {
     let blip: Blip
     let fileURL: URL
@@ -13,16 +11,13 @@ struct ReviewView: View {
     @EnvironmentObject private var repo: BlipRepository
     @Environment(\.dismiss) private var dismiss
 
-    @StateObject private var uploader = ClipUploader()
-    @State private var sendToBlipIds: Set<String>
-    @State private var caption: String = ""
-    @State private var postError: String?
+    @StateObject private var vm: ReviewViewModel
 
     init(blip: Blip, fileURL: URL, onPosted: @escaping () -> Void) {
         self.blip = blip
         self.fileURL = fileURL
         self.onPosted = onPosted
-        _sendToBlipIds = State(initialValue: [blip.id])
+        _vm = StateObject(wrappedValue: ReviewViewModel(blip: blip))
     }
 
     var body: some View {
@@ -42,15 +37,12 @@ struct ReviewView: View {
 
                     blipPicker
 
-                    if uploader.isUploading {
-                        ProgressView(value: uploader.progress)
+                    if vm.isUploading {
+                        ProgressView(value: vm.uploadProgress)
                             .tint(BlipColor.accent)
                     }
-                    if let postError {
-                        Text(postError)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
+
+                    ErrorText(message: vm.errorMessage)
                 }
                 .padding(.horizontal, 16)
 
@@ -63,18 +55,20 @@ struct ReviewView: View {
                 Button { dismiss() } label: {
                     Image(systemName: "xmark").foregroundStyle(BlipColor.textPrimary)
                 }
-                .disabled(uploader.isUploading)
+                .disabled(vm.isUploading)
+                .accessibilityLabel("Close")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: post) {
-                    if uploader.isUploading {
+                    if vm.isUploading {
                         ProgressView().tint(BlipColor.accent)
                     } else {
                         Image(systemName: "arrow.up")
-                            .foregroundStyle(canPost ? BlipColor.accent : BlipColor.textTertiary)
+                            .foregroundStyle(vm.canPost ? BlipColor.accent : BlipColor.textTertiary)
                     }
                 }
-                .disabled(!canPost || uploader.isUploading)
+                .disabled(!vm.canPost || vm.isUploading)
+                .accessibilityLabel("Post clip")
             }
         }
         .toolbarBackground(BlipColor.background, for: .navigationBar)
@@ -94,19 +88,14 @@ struct ReviewView: View {
     }
 
     private var blipPicker: some View {
-        // Slice A scope: send-to lists the current blip + every other blip the user is in.
         VStack(spacing: 8) {
             ForEach(allDestinations) { dest in
                 Button {
-                    if sendToBlipIds.contains(dest.id) {
-                        sendToBlipIds.remove(dest.id)
-                    } else {
-                        sendToBlipIds.insert(dest.id)
-                    }
+                    vm.toggleDestination(dest.id)
                 } label: {
                     HStack {
-                        Image(systemName: sendToBlipIds.contains(dest.id) ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(sendToBlipIds.contains(dest.id) ? BlipColor.accent : BlipColor.textTertiary)
+                        Image(systemName: vm.sendToBlipIds.contains(dest.id) ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(vm.sendToBlipIds.contains(dest.id) ? BlipColor.accent : BlipColor.textTertiary)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(dest.name)
                                 .font(BlipTypography.body)
@@ -139,8 +128,6 @@ struct ReviewView: View {
         return list
     }
 
-    private var canPost: Bool { !sendToBlipIds.isEmpty }
-
     private var currentHourString: String {
         let formatter = DateFormatter()
         formatter.dateFormat = "h a"
@@ -148,51 +135,10 @@ struct ReviewView: View {
     }
 
     private func post() {
-        guard case .signedIn(let uid) = auth.state else {
-            postError = "not signed in"
-            return
-        }
-        postError = nil
-
-        // Pre-flight membership check. Re-fetches the blip so a stale local copy
-        // can't smuggle the upload past Storage rules with a clearer error here.
+        guard case .signedIn(let uid) = auth.state else { return }
         Task {
-            do {
-                let snapshot = try await Firestore.firestore()
-                    .collection("blips").document(blip.id).getDocument()
-                let liveMembers = (snapshot.data()?["members"] as? [String]) ?? []
-                let sdkUid = Auth.auth().currentUser?.uid ?? "<nil>"
-
-                print("[blip-diag] AuthService.state uid: \(uid)")
-                print("[blip-diag] SDK currentUser uid:  \(sdkUid)")
-                print("[blip-diag] State==SDK?           \(uid == sdkUid)")
-                print("[blip-diag] blipId:               \(blip.id)")
-                print("[blip-diag] liveMembers:          \(liveMembers)")
-                for (idx, m) in liveMembers.enumerated() {
-                    let same = m == uid
-                    print("[blip-diag]   members[\(idx)] match=\(same) value=\(m)")
-                    if !same {
-                        print("[blip-diag]   uid bytes:    \(uid.unicodeScalars.map { String(format: "%02X", $0.value) }.joined(separator: " "))")
-                        print("[blip-diag]   member bytes: \(m.unicodeScalars.map { String(format: "%02X", $0.value) }.joined(separator: " "))")
-                    }
-                }
-
-                guard liveMembers.contains(uid) else {
-                    postError = "you're not a member of this blip — try the join code."
-                    return
-                }
-
-                try await uploader.upload(
-                    fileURL: fileURL,
-                    uid: uid,
-                    primaryBlipId: blip.id,
-                    sharedToBlipIds: Array(sendToBlipIds),
-                    caption: caption.isEmpty ? nil : caption
-                )
-                onPosted()
-            } catch {
-                postError = error.localizedDescription
-            }
+            await vm.post(uid: uid, fileURL: fileURL)
+            if vm.errorMessage == nil { onPosted() }
         }
     }
 }
