@@ -72,6 +72,12 @@ struct BlipDetailView: View {
                         Image(systemName: "person.2")
                             .foregroundStyle(BlipColor.textPrimary)
                     }
+                    NavigationLink {
+                        ExportView(blip: blip)
+                    } label: {
+                        Image(systemName: "film")
+                            .foregroundStyle(BlipColor.textPrimary)
+                    }
                     Button { showShareSheet = true } label: {
                         Image(systemName: "square.and.arrow.up")
                             .foregroundStyle(BlipColor.textPrimary)

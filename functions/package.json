@@ -16,6 +16,7 @@
   },
   "main": "lib/index.js",
   "dependencies": {
+    "ffmpeg-static": "^5.2.0",
     "firebase-admin": "^12.6.0",
     "firebase-functions": "^6.0.0"
   },
