@@ -6,14 +6,8 @@ import Foundation
 import UIKit
 
 @MainActor
-final class AuthService: NSObject, ObservableObject {
-    enum State {
-        case loading
-        case signedOut
-        case signedIn(uid: String)
-    }
-
-    @Published private(set) var state: State = .loading
+final class AuthService: NSObject, ObservableObject, AuthServiceProtocol {
+    @Published private(set) var state: AuthState = .loading
     @Published private(set) var lastError: String?
 
     private var authStateHandle: AuthStateDidChangeListenerHandle?
@@ -67,10 +61,25 @@ final class AuthService: NSObject, ObservableObject {
 
     // MARK: - Phone fallback (Phase B — invite/contact-sync trigger)
 
+    private let phoneUIDelegate = PhoneAuthUIDelegate()
+
+    // Use callback-based API — the async overload crashes on simulator in Firebase 11.x
+    // when isAppVerificationDisabledForTesting is set after configure().
     func startPhoneVerification(phoneE164: String) async throws -> String {
-        let verificationID = try await PhoneAuthProvider.provider()
-            .verifyPhoneNumber(phoneE164, uiDelegate: nil)
-        return verificationID
+        try await withCheckedThrowingContinuation { cont in
+            PhoneAuthProvider.provider().verifyPhoneNumber(
+                phoneE164,
+                uiDelegate: phoneUIDelegate
+            ) { verificationID, error in
+                if let error {
+                    cont.resume(throwing: error)
+                } else if let id = verificationID {
+                    cont.resume(returning: id)
+                } else {
+                    cont.resume(throwing: AuthError.verificationFailed)
+                }
+            }
+        }
     }
 
     func confirmPhoneCode(verificationID: String, code: String) async throws {
@@ -85,9 +94,8 @@ final class AuthService: NSObject, ObservableObject {
         }
     }
 
-    // MARK: - Anonymous (DEBUG only — skips real auth on simulator)
+    // MARK: - Anonymous
 
-    #if DEBUG
     func signInAnonymously() async {
         do {
             _ = try await Auth.auth().signInAnonymously()
@@ -96,7 +104,6 @@ final class AuthService: NSObject, ObservableObject {
             lastError = error.localizedDescription
         }
     }
-    #endif
 
     // MARK: - Sign out
 
@@ -227,7 +234,7 @@ extension AuthService: ASAuthorizationControllerDelegate {
 // MARK: - ASAuthorizationControllerPresentationContextProviding
 
 extension AuthService: ASAuthorizationControllerPresentationContextProviding {
-    nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
         let scene = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .first { $0.activationState == .foregroundActive }
@@ -238,6 +245,7 @@ extension AuthService: ASAuthorizationControllerPresentationContextProviding {
 enum AuthError: LocalizedError {
     case invalidAppleCredential
     case notSignedIn
+    case verificationFailed
 
     var errorDescription: String? {
         switch self {
@@ -245,6 +253,8 @@ enum AuthError: LocalizedError {
             return "Sign in with Apple returned an invalid credential."
         case .notSignedIn:
             return "You're not signed in."
+        case .verificationFailed:
+            return "Verification failed. Check the number and try again."
         }
     }
 }

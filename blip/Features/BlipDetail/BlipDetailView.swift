@@ -98,7 +98,6 @@ struct BlipDetailView: View {
             }
         }
         .toolbarBackground(BlipColor.background, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(activityItems: ["join my blip \"\(blip.name)\" — code: \(blip.joinCode)"])
         }
@@ -170,27 +169,48 @@ private struct YourSlot: View {
             } else {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(BlipColor.surface)
-                VStack(spacing: 12) {
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [BlipColor.accent.opacity(0.4), BlipColor.accent.opacity(0.1)],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    )
+                VStack(spacing: 10) {
                     HStack {
                         avatarBadge
                         Spacer()
-                        Image(systemName: "ellipsis")
-                            .foregroundStyle(BlipColor.textTertiary)
                     }
                     .padding(.horizontal, 14)
-                    .padding(.top, 12)
+                    .padding(.top, 14)
 
-                    Text(currentHourString)
-                        .font(BlipTypography.clipTimestamp)
-                        .foregroundStyle(BlipColor.textPrimary.opacity(0.4))
+                    Spacer()
 
-                    Text("tap to capture")
-                        .font(BlipTypography.body)
-                        .foregroundStyle(BlipColor.textPrimary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(BlipColor.surfaceElevated, in: Capsule())
-                        .padding(.bottom, 16)
+                    VStack(spacing: 6) {
+                        Text(currentHourString)
+                            .font(BlipTypography.clipTimestamp)
+                            .foregroundStyle(BlipColor.textPrimary.opacity(0.25))
+                        Text("what are you up to?")
+                            .font(.system(size: 13))
+                            .foregroundStyle(BlipColor.textTertiary)
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 13))
+                        Text("record 2 seconds")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(BlipColor.accent, in: Capsule())
+                    .padding(.bottom, 16)
                 }
             }
         }

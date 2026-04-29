@@ -1,3 +1,4 @@
+import FirebaseAuth
 import FirebaseCore
 import FirebaseMessaging
 import OSLog
@@ -14,6 +15,7 @@ struct blipApp: App {
     @StateObject private var moderation = ModerationService()
     @StateObject private var users = UserRepository()
     @StateObject private var deepLinks = DeepLinkRouter()
+    @StateObject private var theme = ThemeManager()
 
     var body: some Scene {
         WindowGroup {
@@ -23,10 +25,14 @@ struct blipApp: App {
                 .environmentObject(moderation)
                 .environmentObject(users)
                 .environmentObject(deepLinks)
-                .preferredColorScheme(.dark)
+                .environmentObject(theme)
+                .preferredColorScheme(theme.preference.colorScheme)
                 .onAppear {
                     appDelegate.users = users
                     appDelegate.deepLinks = deepLinks
+                }
+                .onOpenURL { url in
+                    _ = Auth.auth().canHandle(url)
                 }
         }
     }
@@ -41,6 +47,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         FirebaseApp.configure()
+
+        // Bypass APNs/reCAPTCHA in debug — settings starts nil in SDK 11.x so we must
+        // create it explicitly; optional-chaining silently does nothing on nil.
+        // Use Firebase Console test numbers: Authentication → Phone → Test phone numbers.
+        #if DEBUG
+        let authSettings = AuthSettings()
+        authSettings.isAppVerificationDisabledForTesting = true
+        Auth.auth().settings = authSettings
+        #endif
 
         // FCM <-> APNs registration. The aps-environment entitlement is required for
         // real push delivery; without it FCM still issues a token but messages won't arrive.
@@ -72,6 +87,23 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
         appLog.error("APNs register failed: \(error.localizedDescription, privacy: .public)")
+    }
+
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        if Auth.auth().canHandleNotification(userInfo) {
+            completionHandler(.noData)
+            return
+        }
+        completionHandler(.newData)
+    }
+
+    func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        if Auth.auth().canHandle(url) { return true }
+        return false
     }
 
     // MARK: - FCM token

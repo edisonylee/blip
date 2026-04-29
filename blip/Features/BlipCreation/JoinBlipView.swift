@@ -14,61 +14,79 @@ struct JoinBlipView: View {
         NavigationStack {
             ZStack {
                 BlipColor.background.ignoresSafeArea()
+                DoodleBackground(intensity: 0.8)
 
-                VStack(alignment: .leading, spacing: 24) {
-                    Text("→ join a blip")
-                        .font(BlipTypography.body)
-                        .foregroundStyle(BlipColor.textPrimary)
-
-                    HStack(spacing: 4) {
-                        Text("#")
-                            .foregroundStyle(BlipColor.textSecondary)
-                        TextField(
-                            "code",
-                            text: $code,
-                            prompt: Text("code").foregroundStyle(BlipColor.textSecondary)
-                        )
-                        .focused($codeFocused)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.go)
-                        .onSubmit(submit)
-                        .foregroundStyle(BlipColor.textPrimary)
-                        .font(.system(size: 18, weight: .regular, design: .monospaced))
+                VStack(spacing: 0) {
+                    // Header
+                    VStack(spacing: 6) {
+                        Text("got a code?")
+                            .font(.system(size: 28, weight: .black, design: .rounded))
+                            .foregroundStyle(BlipColor.textPrimary)
+                        Text("your friend sent you a blip join code")
+                            .font(.system(size: 14))
+                            .foregroundStyle(BlipColor.textTertiary)
                     }
-
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
+                    .padding(.top, 32)
+                    .padding(.horizontal, 24)
 
                     Spacer()
+
+                    // Code input
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("join code")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(BlipColor.textTertiary)
+                            .textCase(.uppercase)
+                            .tracking(0.8)
+
+                        HStack(spacing: 10) {
+                            Text("#")
+                                .font(.system(size: 22, weight: .black, design: .monospaced))
+                                .foregroundStyle(BlipColor.accent)
+                            TextField("c9kz6il", text: $code)
+                                .focused($codeFocused)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .submitLabel(.go)
+                                .onSubmit(submit)
+                                .foregroundStyle(BlipColor.textPrimary)
+                                .font(.system(size: 22, weight: .semibold, design: .monospaced))
+                        }
+                        .padding(16)
+                        .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(codeFocused ? BlipColor.accent.opacity(0.5) : BlipColor.border, lineWidth: 1)
+                        )
+                        .animation(.easeOut(duration: 0.2), value: codeFocused)
+                    }
+                    .padding(.horizontal, 24)
+
+                    Spacer()
+
+                    // Footer
+                    VStack(spacing: 12) {
+                        ErrorText(message: errorMessage)
+
+                        Button("join blip") { submit() }
+                            .blipPrimary(isLoading: isSubmitting)
+                            .disabled(!canSubmit || isSubmitting)
+                            .opacity(canSubmit ? 1 : 0.4)
+                            .padding(.horizontal, 24)
+                    }
+                    .padding(.bottom, 32)
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 16)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { dismiss() } label: {
-                        Image(systemName: "xmark").foregroundStyle(BlipColor.textPrimary)
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(BlipColor.textSecondary)
                     }
-                }
-                ToolbarItem(placement: .principal) {
-                    Text("join")
-                        .font(BlipTypography.body)
-                        .foregroundStyle(BlipColor.textPrimary)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: submit) {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(canSubmit ? BlipColor.accent : BlipColor.textTertiary)
-                    }
-                    .disabled(!canSubmit || isSubmitting)
                 }
             }
             .toolbarBackground(BlipColor.background, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
         }
         .onAppear { codeFocused = true }
     }

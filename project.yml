@@ -47,6 +47,10 @@ targets:
           UIApplicationSupportsMultipleScenes: false
         UIBackgroundModes:
           - remote-notification
+        CFBundleURLTypes:
+          - CFBundleTypeRole: Editor
+            CFBundleURLSchemes:
+              - app-1-625817268885-ios-3afc6dbd3b3bd631d0619c
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.edisonlee.blip
@@ -69,10 +73,9 @@ targets:
         product: FirebaseMessaging
     entitlements:
       path: blip/blip.entitlements
-      properties: {}
-      # Restore when on paid Apple Developer Program:
-      # com.apple.developer.applesignin: [Default]
-      # aps-environment: development
+      properties:
+        com.apple.developer.applesignin:
+          - Default
 
 schemes:
   blip:

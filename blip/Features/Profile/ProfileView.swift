@@ -3,6 +3,7 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject private var auth: AuthService
     @EnvironmentObject private var users: UserRepository
+    @EnvironmentObject private var theme: ThemeManager
     @Environment(\.dismiss) private var dismiss
 
     @State private var showDeleteConfirm = false
@@ -22,6 +23,18 @@ struct ProfileView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
 
+                // Theme
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("appearance")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(BlipColor.textTertiary)
+                        .padding(.horizontal, 4)
+
+                    ThemePicker(selection: $theme.preference)
+                }
+                .padding(.horizontal, 20)
+
+                // Other settings
                 VStack(spacing: 0) {
                     Button {
                         showQuietHours = true
@@ -188,7 +201,6 @@ private struct QuietHoursSheet: View {
                 }
             }
             .toolbarBackground(BlipColor.background, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
         }
     }
 
@@ -233,9 +245,40 @@ func formatHour(_ h: Int) -> String {
     return "\(hour12)\(suffix)"
 }
 
+// MARK: - Theme Picker
+
+private struct ThemePicker: View {
+    @Binding var selection: ThemePreference
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(ThemePreference.allCases) { option in
+                Button {
+                    withAnimation(.spring(duration: 0.25)) { selection = option }
+                } label: {
+                    VStack(spacing: 6) {
+                        Image(systemName: option.icon)
+                            .font(.system(size: 16))
+                        Text(option.label)
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundStyle(selection == option ? .black : BlipColor.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        selection == option ? BlipColor.accent : BlipColor.surface,
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
 #Preview {
     ProfileView()
         .environmentObject(AuthService())
         .environmentObject(UserRepository())
-        .preferredColorScheme(.dark)
+        .environmentObject(ThemeManager())
 }
