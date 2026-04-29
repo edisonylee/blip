@@ -14,7 +14,7 @@ import * as logger from "firebase-functions/logger";
  */
 export const onClipUpload = onObjectFinalized(
   {
-    region: "us-central1",
+    region: "us-east1",
     memory: "1GiB",
     timeoutSeconds: 60,
   },

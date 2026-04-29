@@ -49,6 +49,25 @@ final class UserRepository: ObservableObject {
         ], merge: true)
     }
 
+    /// Idempotently adds an FCM device token to the current user's profile.
+    /// Called by AppDelegate when Firebase Messaging issues a token.
+    func addFcmToken(_ token: String) async throws {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        try await db.collection("users").document(uid).setData([
+            "fcmTokens": FieldValue.arrayUnion([token]),
+            "timezoneIdentifier": TimeZone.current.identifier,
+            "updatedAt": Timestamp(date: Date()),
+        ], merge: true)
+    }
+
+    func removeFcmToken(_ token: String) async throws {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        try await db.collection("users").document(uid).setData([
+            "fcmTokens": FieldValue.arrayRemove([token]),
+            "updatedAt": Timestamp(date: Date()),
+        ], merge: true)
+    }
+
     private static func decode(uid: String, data: [String: Any]) -> BlipUser? {
         let displayName = data["displayName"] as? String ?? ""
         let photoURL = (data["photoURL"] as? String).flatMap(URL.init(string:))
