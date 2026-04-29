@@ -74,8 +74,10 @@ final class ClipUploader: ObservableObject {
         let durationSeconds = await Self.probeDuration(fileURL: fileURL)
 
         // 3. Write a clip doc into each target blip's clips subcollection.
+        // Deterministic clipId per (uid, hour) so reposting within the hour
+        // replaces the prior doc instead of stacking duplicates in the grid.
         let batch = db.batch()
-        let clipId = UUID().uuidString
+        let clipId = "\(uid)_\(hour)"
         for blipId in sharedToBlipIds {
             let ref = db.collection("blips").document(blipId)
                 .collection("days").document(dateKey)

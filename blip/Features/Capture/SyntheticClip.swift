@@ -13,6 +13,7 @@ enum SyntheticClip {
             .appendingPathComponent("blip-sim-\(UUID().uuidString).mov")
 
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        writer.shouldOptimizeForNetworkUse = true
 
         // Landscape 16:9 to match the real capture path (CaptureSession uses
         // videoRotationAngle = 0 = native sensor landscape).
