@@ -1,11 +1,16 @@
 /**
- * Per-hour grid layout per CLAUDE.md core mechanic:
- *   1   -> 1×1 (full canvas)
- *   2   -> 1×2 (stacked vertically — single column, two rows on a 9:16 canvas)
- *   3-4 -> 2×2
- *   5-6 -> 3×2
- *   7-9 -> 3×3
- *   10+ -> 4×3 (caps at 12 since blip.size is bounded 2–12)
+ * Per-hour grid layout. Up to 5 members the grid stays single-column so each
+ * landscape clip gets a full-width row (looks much better than cramming
+ * landscape footage into square cells). Past 5 it splits into two columns.
+ *
+ *   1    -> 1×1 (full canvas)
+ *   2    -> 1×2
+ *   3    -> 1×3
+ *   4    -> 1×4
+ *   5    -> 1×5
+ *   6    -> 2×3
+ *   7-8  -> 2×4
+ *   9-10 -> 2×5  (hard cap at 10 members per blip)
  *
  * Inputs are pre-scaled to cellWidth × cellHeight before xstack, so positions
  * are literal pixel offsets (no `w0/h0` variables needed).
@@ -25,12 +30,11 @@ const CANVAS_HEIGHT = 1920;
 export function gridFor(count: number): GridSpec {
   let cols: number;
   let rows: number;
-  if (count <= 1) { cols = 1; rows = 1; }
-  else if (count === 2) { cols = 1; rows = 2; }
-  else if (count <= 4) { cols = 2; rows = 2; }
-  else if (count <= 6) { cols = 3; rows = 2; }
-  else if (count <= 9) { cols = 3; rows = 3; }
-  else { cols = 4; rows = 3; }
+  if (count <= 1)      { cols = 1; rows = 1; }
+  else if (count <= 5) { cols = 1; rows = count; }
+  else if (count === 6) { cols = 2; rows = 3; }
+  else if (count <= 8) { cols = 2; rows = 4; }
+  else                 { cols = 2; rows = 5; }
 
   const cellWidth = Math.floor(CANVAS_WIDTH / cols);
   const cellHeight = Math.floor(CANVAS_HEIGHT / rows);

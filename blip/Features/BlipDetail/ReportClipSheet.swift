@@ -30,8 +30,9 @@ struct ReportClipSheet: View {
 
             VStack(alignment: .leading, spacing: 16) {
                 Text("report this clip")
-                    .font(BlipTypography.wordmark)
-                    .foregroundStyle(BlipColor.accent)
+                    .font(BlipTypography.title)
+                    .tracking(BlipTypography.titleTracking)
+                    .foregroundStyle(BlipColor.textPrimary)
                 Text("we'll review within 24 hours.")
                     .font(.footnote)
                     .foregroundStyle(BlipColor.textTertiary)
@@ -47,7 +48,7 @@ struct ReportClipSheet: View {
                                 Spacer()
                                 if selected == cat {
                                     Image(systemName: "checkmark")
-                                        .foregroundStyle(BlipColor.accent)
+                                        .foregroundStyle(BlipColor.textPrimary)
                                 }
                             }
                             .padding(.horizontal, 16)
@@ -74,10 +75,14 @@ struct ReportClipSheet: View {
                 } label: {
                     Text(isSending ? "sending…" : "submit report")
                         .font(BlipTypography.body)
-                        .foregroundStyle(.black)
+                        .tracking(BlipTypography.titleTracking)
+                        .foregroundStyle(selected == nil ? BlipColor.textTertiary : BlipColor.accentNeutralOn)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(selected == nil ? BlipColor.surfaceElevated : BlipColor.accent, in: Capsule())
+                        .background(
+                            selected == nil ? BlipColor.surfaceElevated : BlipColor.accentNeutral,
+                            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        )
                 }
                 .disabled(selected == nil || isSending)
             }
@@ -86,10 +91,13 @@ struct ReportClipSheet: View {
             if sentToast {
                 Text("thanks. we'll review.")
                     .font(BlipTypography.body)
-                    .foregroundStyle(.black)
+                    .foregroundStyle(BlipColor.accentNeutralOn)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .background(BlipColor.accent, in: Capsule())
+                    .background(
+                        BlipColor.accentNeutral,
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
                     .transition(.opacity)
             }
         }

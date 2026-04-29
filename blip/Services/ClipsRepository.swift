@@ -32,7 +32,7 @@ final class ClipsRepository: ObservableObject {
         listener?.remove()
         blipId = blip.id
         let tz = TimeZone(identifier: blip.timezoneIdentifier) ?? .current
-        let dateKey = Self.dateKey(for: Date(), in: tz)
+        let dateKey = BlipHour.dateKey(for: Date(), in: tz)
         log.info("startListening blip=\(blip.id, privacy: .public) date=\(dateKey, privacy: .public)")
 
         listener = db.collection("blips").document(blip.id)
@@ -70,7 +70,7 @@ final class ClipsRepository: ObservableObject {
     func deleteClip(_ clip: BlipClip) async throws {
         guard let blipId else { return }
         let tz = TimeZone.current
-        let dateKey = Self.dateKey(for: clip.createdAt, in: tz)
+        let dateKey = BlipHour.dateKey(for: clip.createdAt, in: tz)
         try await db.collection("blips").document(blipId)
             .collection("days").document(dateKey)
             .collection("clips").document(clip.id)
@@ -80,7 +80,7 @@ final class ClipsRepository: ObservableObject {
     func updateCaption(_ clip: BlipClip, caption: String) async throws {
         guard let blipId else { return }
         let tz = TimeZone.current
-        let dateKey = Self.dateKey(for: clip.createdAt, in: tz)
+        let dateKey = BlipHour.dateKey(for: clip.createdAt, in: tz)
         try await db.collection("blips").document(blipId)
             .collection("days").document(dateKey)
             .collection("clips").document(clip.id)
@@ -88,15 +88,6 @@ final class ClipsRepository: ObservableObject {
     }
 
     // MARK: - Helpers
-
-    static func dateKey(for date: Date, in tz: TimeZone) -> String {
-        // 4AM-to-4AM window: subtract 4 hours so a clip at 3AM still belongs to "yesterday's" key.
-        let shifted = date.addingTimeInterval(-4 * 3600)
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = tz
-        return formatter.string(from: shifted)
-    }
 
     private static func decode(doc: QueryDocumentSnapshot) -> Clip? {
         let data = doc.data()

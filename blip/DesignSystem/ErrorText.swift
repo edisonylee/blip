@@ -7,7 +7,7 @@ struct ErrorText: View {
     var body: some View {
         if let message {
             Label(message, systemImage: "exclamationmark.circle.fill")
-                .font(.system(size: 13))
+                .font(.blip(size: 13))
                 .foregroundStyle(BlipColor.error)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)

@@ -17,10 +17,10 @@ struct JoinBlipView: View {
                     // Header
                     VStack(spacing: 6) {
                         Text("got a code?")
-                            .font(.system(size: 28, weight: .black, design: .rounded))
+                            .font(.blip(size: 28, weight: .black, design: .rounded))
                             .foregroundStyle(BlipColor.textPrimary)
                         Text("your friend sent you a blip join code")
-                            .font(.system(size: 14))
+                            .font(.blip(size: 14))
                             .foregroundStyle(BlipColor.textTertiary)
                     }
                     .padding(.top, 32)
@@ -30,7 +30,7 @@ struct JoinBlipView: View {
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("join code")
-                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .font(.blip(size: 13, weight: .semibold, design: .rounded))
                             .foregroundStyle(BlipColor.textSecondary)
                         TextField("c9kz6il", text: $vm.code)
                             .textInputAutocapitalization(.none)
@@ -70,7 +70,7 @@ struct JoinBlipView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.blip(size: 16, weight: .medium))
                             .foregroundStyle(BlipColor.textSecondary)
                     }
                     .accessibilityLabel("Close")

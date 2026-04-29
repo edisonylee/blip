@@ -7,7 +7,7 @@ struct Blip: Codable, Identifiable, Hashable {
     var name: String
     var ownerUid: String
     var members: [String]               // Firebase Auth uids
-    var size: Int                       // 2...12
+    var size: Int                       // 2...10 (cap from grid layout spec)
     var joinCode: String                // legacy code (e.g. "c9kz6il"), still supported per parity
     var inviteUrl: URL?                 // Universal Link, primary mechanic in v0
     var timezoneIdentifier: String      // e.g. "America/New_York" — controls 4AM stitch boundary

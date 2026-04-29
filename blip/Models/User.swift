@@ -2,6 +2,9 @@ import Foundation
 
 struct BlipUser: Codable, Identifiable, Hashable {
     let id: String              // Firebase Auth uid
+    /// Snapchat-style username, lowercase. Nil until the user claims one.
+    /// Uniqueness is enforced via the /usernames/{handle} lock collection.
+    var handle: String?
     var displayName: String
     var photoURL: URL?
     var phoneE164: String?
@@ -16,6 +19,35 @@ struct BlipUser: Codable, Identifiable, Hashable {
     var quietHoursStart: Int = 23
     var quietHoursEnd: Int = 7
     var timezoneIdentifier: String = TimeZone.current.identifier
+
+    // Stats — written by Cloud Functions (clip-create trigger + friendship trigger).
+    // The client treats them as read-only.
+    var totalClips: Int = 0
+    var streakCurrent: Int = 0
+    var streakBest: Int = 0
+    /// YYYY-MM-DD of the user's most recent clip in their local TZ.
+    /// The streak trigger compares this to today to decide continue / break.
+    var lastClipDay: String?
+    var friendsCount: Int = 0
+
+    // Referrals — written by the `onUserCreated` Cloud Function trigger.
+    // Each new uid that signs up via this user's invite link increments the
+    // referrer's count by 1 (idempotent: doc-create only fires once per uid).
+    // The client treats `referralsCount` as read-only.
+    var referralsCount: Int = 0
+    /// Set once at first-sign-in if a `blip://invite?ref=UID` deep link landed
+    /// before signup. Immutable after create — see firestore.rules.
+    var referredByUid: String?
+}
+
+extension BlipUser {
+    /// How many blipchats the user is allowed to create.
+    /// 1 free slot, +1 unlocked for every 4 successful referrals.
+    var unlockedBlipSlots: Int { 1 + referralsCount / 4 }
+
+    /// Referrals still needed to unlock the next slot. Always 1...4 unless the
+    /// user is already at a fresh multiple of 4 (then it's 4).
+    var referralsToNextSlot: Int { 4 - (referralsCount % 4) }
 }
 
 extension BlipUser {

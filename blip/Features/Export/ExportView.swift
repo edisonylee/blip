@@ -1,17 +1,31 @@
 import AVKit
 import SwiftUI
 
-/// Priority-1 screen — on-demand stitched export of today's blips.
+/// Preview-then-stitch.
 ///
 /// Flow:
-///   1. .stitching while the Cloud Function runs (can take 30–90s for a full day)
-///   2. .ready with looping playback + share button
-///   3. .failed with retry
+///   .preview   — every hour with ≥1 clip rendered as a `MemberGrid`. Read-only;
+///                CTA stitches the full set. (Per-clip editing is a follow-up; the
+///                "edit" affordance on the ready screen is a placeholder for it.)
+///   .stitching — Cloud Function running (30–90s for a full day).
+///   .ready     — looping playback + share + disabled "edit" placeholder.
+///   .failed    — error + back-to-preview.
 struct ExportView: View {
     let blip: Blip
 
+    @EnvironmentObject private var auth: AuthService
     @StateObject private var service = ExportService()
+    @StateObject private var clips = ClipsRepository()
+
     @State private var showShare = false
+    /// MP4 downloaded from the stitched URL into the app's tmp directory. We
+    /// share the LOCAL URL, not the remote one — share-sheet extensions
+    /// (Photos save, TikTok, Instagram) need a real file to attach. Sharing the
+    /// remote `https://` URL would only paste a link string.
+    @State private var localVideoURL: URL?
+    /// True between entering .ready and finishing the local download. The share
+    /// + Instagram buttons stay disabled until the file is ready locally.
+    @State private var isPreparingLocal = false
 
     var body: some View {
         ZStack {
@@ -19,7 +33,7 @@ struct ExportView: View {
 
             switch service.status {
             case .idle:
-                idleState
+                previewState
             case .stitching:
                 stitchingState
             case .ready(let url, let dateKey, let hours):
@@ -28,6 +42,7 @@ struct ExportView: View {
                 failedState(msg: msg)
             }
         }
+        .task(id: blip.id) { clips.startListening(blip: blip) }
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Text("export").font(BlipTypography.body).foregroundStyle(BlipColor.textPrimary)
@@ -37,39 +52,98 @@ struct ExportView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
     }
 
-    private var idleState: some View {
-        VStack(spacing: 24) {
-            Spacer()
+    // MARK: - Preview
+
+    private var previewState: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    headerCopy
+
+                    if hoursWithClips.isEmpty {
+                        emptyState
+                    } else {
+                        ForEach(hoursWithClips, id: \.self) { hour in
+                            MemberGrid(
+                                blip: blip,
+                                hour: hour,
+                                clipsForHour: clips.clipsByHour[hour] ?? [],
+                                currentUid: currentUid,
+                                isCurrentHour: false,  // preview: render every hour as past-style
+                                onRecord: {},
+                                onInvite: {},
+                                isAuthor: { _ in false },
+                                onDelete: { _ in },
+                                onEditCaption: { _ in }
+                            )
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 120)  // room for sticky CTA
+            }
+
+            stitchCTABar
+        }
+    }
+
+    private var headerCopy: some View {
+        VStack(alignment: .leading, spacing: 4) {
             Text("today, stitched")
                 .font(BlipTypography.title)
                 .foregroundStyle(BlipColor.textPrimary)
-            Text("compile every blip from \(blip.name) into one savable video.")
+            Text("preview the cut, then stitch.")
                 .font(BlipTypography.caption)
                 .foregroundStyle(BlipColor.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-
-            Button {
-                Task { await service.stitch(blipId: blip.id) }
-            } label: {
-                Text("stitch today")
-                    .font(BlipTypography.body)
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 14)
-                    .background(BlipColor.accent, in: Capsule())
-            }
-            Spacer()
         }
-        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 4)
     }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Spacer().frame(height: 80)
+            Text("no clips today yet")
+                .font(BlipTypography.body)
+                .foregroundStyle(BlipColor.textSecondary)
+            Text("record at least one to enable export.")
+                .font(BlipTypography.caption)
+                .foregroundStyle(BlipColor.textTertiary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var stitchCTABar: some View {
+        Button {
+            Task { await service.stitch(blipId: blip.id) }
+        } label: {
+            Text(stitchButtonLabel)
+                .font(BlipTypography.body)
+                .tracking(BlipTypography.titleTracking)
+                .foregroundStyle(BlipColor.accentNeutralOn)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    BlipColor.accentNeutral.opacity(clipCount == 0 ? 0.4 : 1.0),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
+        }
+        .disabled(clipCount == 0)
+        .padding(.horizontal, 16)
+        .padding(.bottom, 24)
+        .padding(.top, 12)
+        .background(BlipColor.background)
+    }
+
+    // MARK: - Other states
 
     private var stitchingState: some View {
         VStack(spacing: 16) {
             Spacer()
             ProgressView()
                 .controlSize(.large)
-                .tint(BlipColor.accent)
+                .tint(BlipColor.textPrimary)
             Text("stitching today's blips…")
                 .font(BlipTypography.caption)
                 .foregroundStyle(BlipColor.textSecondary)
@@ -92,34 +166,102 @@ struct ExportView: View {
                 Text(dateKey)
                 Text("·")
                 Text("\(hours) hour\(hours == 1 ? "" : "s")")
+                if isPreparingLocal {
+                    Text("·")
+                    Text("preparing…")
+                }
             }
             .font(BlipTypography.caption)
             .foregroundStyle(BlipColor.textTertiary)
 
-            HStack(spacing: 12) {
-                Button { showShare = true } label: {
-                    Label("share", systemImage: "square.and.arrow.up")
-                        .font(BlipTypography.body)
-                        .foregroundStyle(.black)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                        .background(BlipColor.accent, in: Capsule())
+            HStack(spacing: 10) {
+                shareButton
+                if InstagramStoryShare.isAvailable {
+                    instagramStoryButton
                 }
-
-                Button {
-                    Task { await service.stitch(blipId: blip.id) }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.body)
-                        .foregroundStyle(BlipColor.textPrimary)
-                        .frame(width: 44, height: 44)
-                        .background(BlipColor.surface, in: Circle())
-                }
+                editPlaceholderButton
             }
+            .padding(.horizontal, 16)
             .padding(.bottom, 24)
         }
+        .task(id: url) { await downloadForSharing(remoteURL: url) }
         .sheet(isPresented: $showShare) {
-            ShareSheet(activityItems: [url])
+            // Always pass the local file when we have it — that's what unlocks
+            // Save Video / TikTok / etc. Fall back to the remote URL only if
+            // the local download somehow failed (rare; user can still copy link).
+            ShareSheet(activityItems: [localVideoURL ?? url])
+        }
+    }
+
+    private var shareButton: some View {
+        Button { showShare = true } label: {
+            Label("share", systemImage: "square.and.arrow.up")
+                .font(BlipTypography.body)
+                .tracking(BlipTypography.titleTracking)
+                .foregroundStyle(BlipColor.accentNeutralOn)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(
+                    BlipColor.accentNeutral.opacity(localVideoURL == nil ? 0.4 : 1.0),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
+        }
+        .disabled(localVideoURL == nil)
+    }
+
+    private var instagramStoryButton: some View {
+        Button {
+            guard let local = localVideoURL else { return }
+            try? InstagramStoryShare.share(videoFileURL: local)
+        } label: {
+            Image(systemName: "circle.dashed.inset.filled")
+                .font(.body)
+                .foregroundStyle(BlipColor.textPrimary)
+                .frame(width: 44, height: 44)
+                .background(BlipColor.surface, in: Circle())
+        }
+        .disabled(localVideoURL == nil)
+        .accessibilityLabel("Share to Instagram story")
+    }
+
+    /// Placeholder for per-clip editing (decided 2026-04-29 to ship preview-only first).
+    private var editPlaceholderButton: some View {
+        Button {} label: {
+            Image(systemName: "slider.horizontal.3")
+                .font(.body)
+                .foregroundStyle(BlipColor.textTertiary)
+                .frame(width: 44, height: 44)
+                .background(BlipColor.surface, in: Circle())
+        }
+        .disabled(true)
+        .accessibilityLabel("Edit (coming soon)")
+    }
+
+    /// Pull the stitched MP4 to a tmp file so the share sheet can attach it
+    /// as a real video. Idempotent for the same URL — re-entering .ready with
+    /// an unchanged URL skips the download.
+    private func downloadForSharing(remoteURL: URL) async {
+        // Already have it for this URL? Bail. (.task(id:) already filters most
+        // duplicates, but being defensive is cheap.)
+        if let existing = localVideoURL,
+           existing.lastPathComponent.contains(remoteURL.lastPathComponent) {
+            return
+        }
+        isPreparingLocal = true
+        defer { isPreparingLocal = false }
+        do {
+            let (tmpURL, _) = try await URLSession.shared.download(from: remoteURL)
+            // URLSession picks an opaque tmp name; rename so iOS detects the
+            // .mp4 extension and shows the right share-sheet affordances.
+            let dest = FileManager.default.temporaryDirectory
+                .appendingPathComponent("blip-export-\(UUID().uuidString).mp4")
+            try? FileManager.default.removeItem(at: dest)
+            try FileManager.default.moveItem(at: tmpURL, to: dest)
+            localVideoURL = dest
+        } catch {
+            // Leave localVideoURL nil — share button stays disabled, user can
+            // re-stitch. Could surface a toast here later.
+            localVideoURL = nil
         }
     }
 
@@ -135,12 +277,34 @@ struct ExportView: View {
                 .foregroundStyle(BlipColor.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
-            Button("try again") {
-                Task { await service.stitch(blipId: blip.id) }
-            }
-            .foregroundStyle(BlipColor.accent)
+            Button("back to preview") { service.reset() }
+                .foregroundStyle(BlipColor.textPrimary)
             Spacer()
         }
+    }
+
+    // MARK: - Derived
+
+    private var currentUid: String? {
+        if case .signedIn(let uid) = auth.state { return uid }
+        return nil
+    }
+
+    /// Hours of the blip-day (4AM-anchored) sorted chronologically. We render
+    /// every hour that has at least one clip — the export drops empty hours, so
+    /// hiding them from the preview keeps signal:noise high.
+    private var hoursWithClips: [Int] {
+        clips.clipsByHour.keys.sorted { lhs, rhs in
+            ((lhs - 4 + 24) % 24) < ((rhs - 4 + 24) % 24)
+        }
+    }
+
+    private var clipCount: Int { clips.clips.count }
+
+    private var stitchButtonLabel: String {
+        if clipCount == 0 { return "no clips yet" }
+        if clipCount == 1 { return "stitch 1 clip" }
+        return "stitch \(clipCount) clips"
     }
 }
 

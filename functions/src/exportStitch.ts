@@ -2,6 +2,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import * as logger from "firebase-functions/logger";
 import * as admin from "firebase-admin";
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -102,7 +103,10 @@ export const exportStitch = onCall(
 
     const workdir = await fs.mkdtemp(path.join(os.tmpdir(), `stitch-${blipId}-`));
     try {
-      // Download each unique clip exactly once.
+      // Download each unique clip exactly once via the admin SDK directly from
+      // the bucket. We deliberately don't use the public `videoUrl` token here:
+      // tokens can be revoked or rendered stale by overwrites, and the new
+      // `firebasestorage.app` domain has surfaced intermittent 403s on token reads.
       const clipPathById = new Map<string, string>();
       const downloads: Promise<void>[] = [];
       for (const arr of byHour.values()) {
@@ -110,19 +114,26 @@ export const exportStitch = onCall(
           if (clipPathById.has(c.clipId)) continue;
           const local = path.join(workdir, `clip-${c.clipId}.mov`);
           clipPathById.set(c.clipId, local);
-          downloads.push(downloadToFile(c.videoUrl, local));
+          const objectPath = storagePathFromVideoUrl(c.videoUrl);
+          downloads.push(bucket.file(objectPath).download({ destination: local }).then(() => undefined));
         }
       }
       await Promise.all(downloads);
 
-      // Per-hour grid mp4s.
+      // Per-hour grid mp4s — every hour with ≥1 clip renders all member slots,
+      // with non-posters filled by a black cell so seat positions stay stable.
       const hourOutputs: string[] = [];
       for (const hour of sortedHours) {
         const clipsThisHour = byHour.get(hour)!;
-        clipsThisHour.sort((a, b) => (a.uid + a.clipId).localeCompare(b.uid + b.clipId));
-        const inputs = clipsThisHour.map((c) => clipPathById.get(c.clipId)!);
+        const clipByUid = new Map<string, string>();
+        for (const c of clipsThisHour) {
+          // If a member has multiple clips for an hour (legacy data), keep the first.
+          if (!clipByUid.has(c.uid)) {
+            clipByUid.set(c.uid, clipPathById.get(c.clipId)!);
+          }
+        }
         const out = path.join(workdir, `hour-${hour}.mp4`);
-        await composeHour(inputs, out);
+        await composeHour(members, clipByUid, out);
         hourOutputs.push(out);
       }
 
@@ -130,24 +141,31 @@ export const exportStitch = onCall(
       const finalPath = path.join(workdir, "stitched.mp4");
       await concatHours(hourOutputs, workdir, finalPath);
 
-      // Upload + persist URL.
-      const remotePath = `blips/${blipId}/days/${dateKey}/stitched.mp4`;
+      // Upload + persist URL. Per-user export path so each member's curated
+      // stitch is independent — hiding clips never affects another member's
+      // export. We attach a Firebase Storage download token in object metadata
+      // and construct the public token URL directly (same format the iOS SDK
+      // produces). This avoids getSignedUrl(), which needs
+      // `iam.serviceAccounts.signBlob` and isn't granted to the default compute
+      // service account.
+      const remotePath = `blips/${blipId}/days/${dateKey}/exports/${uid}/stitched.mp4`;
+      const downloadToken = randomUUID();
       await bucket.upload(finalPath, {
         destination: remotePath,
-        metadata: { contentType: "video/mp4" },
+        metadata: {
+          contentType: "video/mp4",
+          metadata: { firebaseStorageDownloadTokens: downloadToken },
+        },
       });
-      const [signedUrl] = await bucket.file(remotePath).getSignedUrl({
-        action: "read",
-        expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
-      });
+      const stitchedUrl =
+        `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/` +
+        `${encodeURIComponent(remotePath)}?alt=media&token=${downloadToken}`;
 
-      await db.collection("blips").doc(blipId)
-        .collection("days").doc(dateKey)
-        .set({
-          stitchStatus: "ready",
-          stitchedVideoUrl: signedUrl,
-          stitchedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
+      // Per-user exports don't fit the day-doc shared-stitch fields
+      // (stitchStatus / stitchedVideoUrl / stitchedAt assumed one stitch per
+      // day). Skipping the day-doc write — clients hold the URL in memory and
+      // re-stitch on revisit. Persisting per-user URLs is a follow-up if usage
+      // shows people want a "last stitched" thumbnail in Archive.
 
       logger.info("exportStitch done", {
         blipId,
@@ -156,7 +174,7 @@ export const exportStitch = onCall(
         clips: clipsSnap.size,
       });
 
-      return { url: signedUrl, dateKey, hours: sortedHours.length };
+      return { url: stitchedUrl, dateKey, hours: sortedHours.length };
     } finally {
       await fs.rm(workdir, { recursive: true, force: true });
     }
@@ -176,11 +194,17 @@ function todaysDateKey(tz: string): string {
   return fmt.format(now); // en-CA gives YYYY-MM-DD
 }
 
-async function downloadToFile(url: string, dest: string): Promise<void> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`download ${res.status} ${url}`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  await fs.writeFile(dest, buf);
+// Parse the storage object path out of a Firebase Storage download URL.
+// Expected shape: https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<encoded-path>?alt=media&token=...
+// We don't care about the bucket — admin SDK already targets the project bucket.
+function storagePathFromVideoUrl(videoUrl: string): string {
+  const marker = "/o/";
+  const idx = videoUrl.indexOf(marker);
+  if (idx < 0) throw new Error(`unrecognized videoUrl: ${videoUrl}`);
+  const after = videoUrl.slice(idx + marker.length);
+  const queryIdx = after.indexOf("?");
+  const encoded = queryIdx >= 0 ? after.slice(0, queryIdx) : after;
+  return decodeURIComponent(encoded);
 }
 
 function ffmpegBin(): string {
@@ -201,11 +225,22 @@ function runFFmpeg(args: string[]): Promise<void> {
   });
 }
 
-async function composeHour(inputs: string[], outPath: string): Promise<void> {
-  if (inputs.length === 0) throw new Error("no inputs for hour");
-  if (inputs.length === 1) {
+const CLIP_DURATION_SEC = 2;
+
+async function composeHour(
+  members: string[],
+  clipByUid: Map<string, string>,
+  outPath: string,
+): Promise<void> {
+  if (members.length === 0) throw new Error("composeHour called with no members");
+
+  // Single-member fast path: one cell, full canvas. We still bail with black if
+  // somehow called without that member's clip (defensive — caller filters this).
+  if (members.length === 1) {
+    const only = clipByUid.get(members[0]);
+    if (!only) throw new Error("single-member hour with no clip");
     await runFFmpeg([
-      "-y", "-i", inputs[0],
+      "-y", "-i", only,
       "-vf",
       `scale=${CANVAS.width}:${CANVAS.height}:force_original_aspect_ratio=increase,` +
       `crop=${CANVAS.width}:${CANVAS.height}`,
@@ -215,28 +250,36 @@ async function composeHour(inputs: string[], outPath: string): Promise<void> {
     return;
   }
 
-  const grid = gridFor(inputs.length);
+  const grid = gridFor(members.length);
+  const args: string[] = ["-y"];
   const filterParts: string[] = [];
 
-  inputs.forEach((_, i) => {
+  members.forEach((uid, i) => {
+    const clipPath = clipByUid.get(uid);
+    if (clipPath) {
+      args.push("-i", clipPath);
+    } else {
+      // lavfi black source matching cell dimensions/duration so xstack timing aligns.
+      args.push(
+        "-f", "lavfi",
+        "-t", String(CLIP_DURATION_SEC),
+        "-i", `color=c=black:s=${grid.cellWidth}x${grid.cellHeight}:r=30`,
+      );
+    }
     filterParts.push(
       `[${i}:v]scale=${grid.cellWidth}:${grid.cellHeight}:force_original_aspect_ratio=increase,` +
       `crop=${grid.cellWidth}:${grid.cellHeight},setpts=PTS-STARTPTS[v${i}]`
     );
   });
 
-  const stackInputs = inputs.map((_, i) => `[v${i}]`).join("");
+  const stackInputs = members.map((_, i) => `[v${i}]`).join("");
   filterParts.push(
-    `${stackInputs}xstack=inputs=${inputs.length}:layout=${grid.xstackLayout}:fill=black[stack]`
+    `${stackInputs}xstack=inputs=${members.length}:layout=${grid.xstackLayout}:fill=black[stack]`
   );
   filterParts.push(
     `[stack]pad=${CANVAS.width}:${CANVAS.height}:0:0:black[v]`
   );
 
-  const args: string[] = ["-y"];
-  for (const inp of inputs) {
-    args.push("-i", inp);
-  }
   args.push(
     "-filter_complex", filterParts.join(";"),
     "-map", "[v]",

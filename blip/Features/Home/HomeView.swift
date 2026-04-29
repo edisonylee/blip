@@ -3,17 +3,21 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject private var auth: AuthService
     @EnvironmentObject private var repo: BlipRepository
+    @EnvironmentObject private var users: UserRepository
     @EnvironmentObject private var deepLinks: DeepLinkRouter
 
     @StateObject private var vm = HomeViewModel()
+    @StateObject private var clipUploader = ClipUploader()
     @State private var showPlusMenu = false
     @State private var creationDestination: CreationDestination?
-    @State private var showProfile = false
+    @State private var showSettings = false
     @State private var path = NavigationPath()
     @State private var pendingCaptureBlip: Blip?
+    @State private var showGlobalCapture = false
+    @State private var showReferralShare = false
     @State private var activeTab: Tab = .blips
 
-    enum Tab { case camera, blips }
+    enum Tab { case camera, blips, profile }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -22,22 +26,19 @@ struct HomeView: View {
 
                 VStack(spacing: 0) {
                     HomeHeader(
-                        onProfile: { showProfile = true },
+                        onSettings: { showSettings = true },
                         onPlus: { showPlusMenu = true }
                     )
                     .padding(.top, 8)
 
-                    if repo.isLoading && repo.blips.isEmpty {
-                        Spacer()
-                        ProgressView().tint(BlipColor.accent)
-                        Spacer()
-                    } else if repo.blips.isEmpty {
-                        emptyState
-                    } else {
-                        blipList
+                    // Two swipe pages — blips (default) and profile. Camera is
+                    // a tap-to-launch button on the bottom toggle, not a page,
+                    // so the existing fullScreenCover capture flow stays intact.
+                    TabView(selection: $activeTab) {
+                        blipsPage.tag(Tab.blips)
+                        ProfileView().tag(Tab.profile)
                     }
-
-                    Spacer(minLength: 0)
+                    .tabViewStyle(.page(indexDisplayMode: .never))
 
                     BottomToggle(active: $activeTab, onCamera: handleCameraTab)
                         .padding(.bottom, 20)
@@ -53,7 +54,13 @@ struct HomeView: View {
                             showPlusMenu = false
                             creationDestination = .join
                         },
-                        onDismiss: { showPlusMenu = false }
+                        onDismiss: { showPlusMenu = false },
+                        canCreate: canCreateBlip,
+                        referralsToNextSlot: users.profile?.referralsToNextSlot ?? 4,
+                        onLockedTap: {
+                            showPlusMenu = false
+                            showReferralShare = true
+                        }
                     )
                 }
 
@@ -70,17 +77,47 @@ struct HomeView: View {
                 case .join: JoinBlipView()
                 }
             }
-            .sheet(isPresented: $showProfile) {
-                ProfileView()
+            .sheet(isPresented: $showSettings) {
+                SettingsView()
+            }
+            .sheet(isPresented: $showReferralShare) {
+                ShareSheet(activityItems: [referralShareText])
             }
             .fullScreenCover(item: $pendingCaptureBlip) { blip in
                 NavigationStack {
                     CaptureView(blip: blip, onPosted: { pendingCaptureBlip = nil })
                 }
             }
+            .fullScreenCover(isPresented: $showGlobalCapture) {
+                if case .signedIn(let uid) = auth.state {
+                    CaptureGlobalView(
+                        uid: uid,
+                        uploader: clipUploader,
+                        onSent: { showGlobalCapture = false }
+                    )
+                    .environmentObject(repo)
+                }
+            }
         }
         .onChange(of: deepLinks.pending) { _, action in handle(action) }
         .onAppear { handle(deepLinks.pending) }
+    }
+
+    // MARK: - Blips page (default landing tab)
+
+    @ViewBuilder
+    private var blipsPage: some View {
+        if repo.isLoading && repo.blips.isEmpty {
+            VStack {
+                Spacer()
+                ProgressView().tint(BlipColor.textPrimary)
+                Spacer()
+            }
+        } else if repo.blips.isEmpty {
+            emptyState
+        } else {
+            blipList
+        }
     }
 
     // MARK: - Empty state
@@ -91,7 +128,7 @@ struct HomeView: View {
             VStack(spacing: 24) {
                 VStack(spacing: 8) {
                     Text("who's in your day?")
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .font(.blip(size: 26, weight: .bold, design: .rounded))
                         .foregroundStyle(BlipColor.textPrimary)
                     Text("start a blip with friends — every hour,\nyou each post 2 seconds of your day.")
                         .font(BlipTypography.body)
@@ -118,8 +155,8 @@ struct HomeView: View {
 
     private var blipList: some View {
         ScrollView(showsIndicators: false) {
-            VStack(spacing: 12) {
-                ForEach(repo.blips) { blip in
+            LazyVStack(spacing: 0) {
+                ForEach(Array(repo.blips.enumerated()), id: \.element.id) { index, blip in
                     NavigationLink(value: blip) {
                         BlipCard(
                             title: blip.name,
@@ -129,10 +166,16 @@ struct HomeView: View {
                         )
                     }
                     .buttonStyle(.plain)
+
+                    if index < repo.blips.count - 1 {
+                        Divider()
+                            .background(BlipColor.border)
+                            .padding(.leading, 64) // align under name, iMessage-style
+                    }
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.top, 16)
+            .padding(.top, 8)
             .padding(.bottom, 12)
         }
     }
@@ -140,11 +183,10 @@ struct HomeView: View {
     // MARK: - Camera tab
 
     private func handleCameraTab() {
-        if let first = repo.blips.first {
-            pendingCaptureBlip = first
-        } else {
-            creationDestination = .create
-        }
+        // Snapchat-style global capture: always opens the camera surface.
+        // Empty-blip users still record — the picker shows an empty state
+        // prompting them to start a blip first.
+        showGlobalCapture = true
     }
 
     // MARK: - Debug badge (debug builds only)
@@ -160,7 +202,7 @@ struct HomeView: View {
                         Text(err).foregroundStyle(.red).lineLimit(2)
                     }
                 }
-                .font(.system(size: 9, design: .monospaced))
+                .font(.blip(size: 9, design: .monospaced))
                 .foregroundStyle(BlipColor.textTertiary.opacity(0.6))
                 .padding(6)
                 .background(BlipColor.surface.opacity(0.7), in: RoundedRectangle(cornerRadius: 6))
@@ -182,11 +224,44 @@ struct HomeView: View {
             if let blip = repo.blips.first(where: { $0.id == id }) {
                 path = NavigationPath([blip])
             }
+        case .invite(let referrerUid):
+            // First-sign-in path is covered by RootView's `consumePendingReferrerUid`
+            // → `ensureUserDoc` → `onUserCreated` trigger. This branch covers the
+            // after-sign-in path: an already-signed-in user taps a referral link,
+            // so we credit the referrer via the `claimReferral` callable. Server
+            // rejects self-loop, missing referrer, and already-credited cases.
+            if case .signedIn(let me) = auth.state, me != referrerUid {
+                Task { try? await users.claimReferral(referrerUid) }
+            }
         }
         deepLinks.consume()
     }
 
     private var currentUid: String { vm.currentUid(from: auth.state) }
+
+    // MARK: - Referral gate
+
+    /// `true` while the user still has at least one unused blipchat slot.
+    /// Defaults to "unlocked" when the profile hasn't streamed in yet so a
+    /// fresh sign-in doesn't briefly show the locked state.
+    private var canCreateBlip: Bool {
+        let unlocked = users.profile?.unlockedBlipSlots ?? 1
+        return repo.blips.count < unlocked
+    }
+
+    /// Locked-state share text — only the personal referral URL is needed
+    /// since there's no specific blip to invite into. If uid isn't yet known,
+    /// fall back to a bare prompt so the share sheet still opens.
+    private var referralShareText: String {
+        let uid: String? = {
+            if case .signedIn(let id) = auth.state { return id }
+            return nil
+        }()
+        if let url = InviteShare.inviteURL(referrerUid: uid) {
+            return "on blip with me — \(url.absoluteString)"
+        }
+        return "on blip with me"
+    }
 }
 
 private enum CreationDestination: String, Identifiable {
@@ -197,26 +272,27 @@ private enum CreationDestination: String, Identifiable {
 // MARK: - Header
 
 private struct HomeHeader: View {
-    let onProfile: () -> Void
+    let onSettings: () -> Void
     let onPlus: () -> Void
 
     var body: some View {
         HStack {
-            Button(action: onProfile) {
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: 22))
+            Button(action: onSettings) {
+                Image(systemName: "gearshape")
+                    .font(.blip(size: 20, weight: .medium))
                     .foregroundStyle(BlipColor.textSecondary)
-                    .frame(width: 40, height: 40)
+                    .frame(minWidth: 44, minHeight: 44)
             }
+            .accessibilityLabel("settings")
             Spacer()
             Button(action: onPlus) {
                 Image(systemName: "plus")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.blip(size: 18, weight: .semibold))
                     .foregroundStyle(BlipColor.textPrimary)
-                    .frame(width: 40, height: 40)
+                    .frame(minWidth: 44, minHeight: 44)
                     .background(BlipColor.surface, in: Circle())
             }
-            .accessibilityLabel("Create or join a blip")
+            .accessibilityLabel("create or join a blip")
         }
         .padding(.horizontal, 16)
     }
@@ -228,27 +304,36 @@ private struct BottomToggle: View {
     @Binding var active: HomeView.Tab
     let onCamera: () -> Void
 
+    private static let buttonWidth: CGFloat = 90
+    private static let height: CGFloat = 40
+
     var body: some View {
         HStack(spacing: 0) {
+            // Camera doesn't paginate — it launches the global capture sheet.
+            // Tap selects it visually for the moment of action and then the
+            // sheet takes over; the page selection itself stays on whatever
+            // page the user was on so swiping back lands where they left off.
             tabButton(label: "camera", tab: .camera) {
-                active = .camera
                 onCamera()
             }
             tabButton(label: "blips", tab: .blips) {
-                active = .blips
+                withAnimation(.easeOut(duration: 0.2)) { active = .blips }
+            }
+            tabButton(label: "profile", tab: .profile) {
+                withAnimation(.easeOut(duration: 0.2)) { active = .profile }
             }
         }
-        .frame(width: 180, height: 40)
+        .frame(width: Self.buttonWidth * 3, height: Self.height)
         .background(BlipColor.surface, in: Capsule())
     }
 
     private func tabButton(label: String, tab: HomeView.Tab, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(.system(size: 14, weight: active == tab ? .semibold : .regular))
+                .font(.blip(size: 14, weight: active == tab ? .semibold : .regular))
                 .foregroundStyle(active == tab ? BlipColor.textPrimary : BlipColor.textTertiary)
                 .frame(maxWidth: .infinity)
-                .frame(height: 40)
+                .frame(height: Self.height)
                 .background(
                     active == tab
                         ? BlipColor.surfaceElevated.clipShape(Capsule())

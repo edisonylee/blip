@@ -52,7 +52,8 @@ struct EditCaptionSheet: View {
                             dismiss()
                         }
                     }
-                    .foregroundStyle(BlipColor.accent)
+                    .foregroundStyle(BlipColor.textPrimary)
+                    .fontWeight(.semibold)
                     .disabled(isSaving)
                 }
             }

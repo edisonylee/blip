@@ -105,7 +105,8 @@ struct CaptureView: View {
                         UIApplication.shared.open(url)
                     }
                 }
-                .foregroundStyle(BlipColor.accent)
+                .foregroundStyle(.white)
+                .fontWeight(.semibold)
             }
         case .unavailable:
             Text("camera unavailable in this environment")

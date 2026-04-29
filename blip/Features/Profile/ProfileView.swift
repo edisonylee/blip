@@ -1,284 +1,200 @@
 import SwiftUI
 
+/// Profile page — the rightmost of the home pager. Identity (handle, joined-N
+/// days-ago) plus stats and links into the social surfaces (friends list,
+/// leaderboard). Settings (theme / quiet hours / sign out / delete) live on
+/// the gear icon in the home header now, not here.
 struct ProfileView: View {
     @EnvironmentObject private var auth: AuthService
     @EnvironmentObject private var users: UserRepository
-    @EnvironmentObject private var theme: ThemeManager
-    @Environment(\.dismiss) private var dismiss
 
-    @State private var showDeleteConfirm = false
-    @State private var isDeleting = false
-    @State private var deleteError: String?
-    @State private var showQuietHours = false
+    @State private var showHandleSheet = false
+
+    // MARK: - Layout constants
+
+    private static let horizontalPadding: CGFloat = 20
+    private static let sectionSpacing: CGFloat = 20
+
+    // MARK: - Body
 
     var body: some View {
         ZStack {
             BlipColor.background.ignoresSafeArea()
 
-            VStack(spacing: 24) {
-                Text("settings")
-                    .font(BlipTypography.title)
-                    .foregroundStyle(BlipColor.textPrimary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20)
+            ScrollView {
+                VStack(spacing: Self.sectionSpacing) {
+                    ProfileStatsHero(
+                        profile: users.profile,
+                        onTapHandle: { showHandleSheet = true }
+                    )
+                    .padding(.horizontal, Self.horizontalPadding)
                     .padding(.top, 8)
 
-                // Theme
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("appearance")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(BlipColor.textTertiary)
-                        .padding(.horizontal, 4)
-
-                    ThemePicker(selection: $theme.preference)
+                    socialLinks
+                        .padding(.horizontal, Self.horizontalPadding)
                 }
-                .padding(.horizontal, 20)
+                .padding(.bottom, Self.sectionSpacing)
+            }
+        }
+        .sheet(isPresented: $showHandleSheet) {
+            EditHandleSheet()
+        }
+    }
 
-                // Other settings
-                VStack(spacing: 0) {
-                    Button {
-                        showQuietHours = true
-                    } label: {
-                        SettingsRow(
-                            title: "quiet hours",
-                            value: quietHoursLabel,
-                            tint: BlipColor.textPrimary
-                        )
-                    }
+    // MARK: - Subviews
 
-                    Divider().background(BlipColor.surfaceElevated)
+    private var socialLinks: some View {
+        VStack(spacing: 0) {
+            NavigationLink {
+                FriendsView()
+            } label: {
+                BlipLinkRow(title: "Friends", value: friendsCountLabel)
+            }
+            .buttonStyle(.plain)
 
-                    Button {
-                        auth.signOut()
-                    } label: {
-                        SettingsRow(title: "sign out", tint: BlipColor.textPrimary)
-                    }
+            Divider().background(BlipColor.surfaceElevated)
 
-                    Divider().background(BlipColor.surfaceElevated)
+            NavigationLink {
+                LeaderboardView()
+            } label: {
+                BlipLinkRow(title: "Leaderboard")
+            }
+            .buttonStyle(.plain)
+        }
+        .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 12))
+    }
 
-                    Button(role: .destructive) {
-                        showDeleteConfirm = true
-                    } label: {
-                        SettingsRow(title: "delete account", tint: .red)
-                    }
-                    .disabled(isDeleting)
-                }
-                .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 12))
-                .padding(.horizontal, 20)
+    // MARK: - Helpers
 
-                if let deleteError {
-                    Text(deleteError)
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .padding(.horizontal, 20)
-                }
+    private var friendsCountLabel: String? {
+        guard let count = users.profile?.friendsCount, count > 0 else { return nil }
+        return count == 1 ? "1" : "\(count)"
+    }
+}
 
+// MARK: - Stats hero
+
+/// Top-of-screen hero for the own-profile screen. Shows the user's @handle
+/// (or a "claim a handle" affordance when unset), how long they've been on
+/// blip, and three stat tiles: total clips, current streak, friends.
+private struct ProfileStatsHero: View {
+    let profile: BlipUser?
+    let onTapHandle: () -> Void
+
+    // MARK: - Layout constants
+
+    private static let stackSpacing: CGFloat = 16
+    private static let tileSpacing: CGFloat = 8
+    private static let cornerRadius: CGFloat = 12
+    private static let contentPadding: CGFloat = 16
+    private static let handleRowMinHeight: CGFloat = 44
+    private static let handleSize: CGFloat = 28
+    private static let handleTracking: CGFloat = -0.3
+    private static let handleRowHSpacing: CGFloat = 8
+
+    // MARK: - Body
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Self.stackSpacing) {
+            handleRow
+            memberSinceLabel
+            statTilesRow
+            if let profile, profile.referralsCount > 0 || profile.unlockedBlipSlots == 1 {
+                Text(referralProgressLabel)
+                    .font(BlipTypography.caption)
+                    .foregroundStyle(BlipColor.textTertiary)
+            }
+        }
+        .padding(Self.contentPadding)
+        .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+                .stroke(BlipColor.border, lineWidth: 1)
+        )
+    }
+
+    // MARK: - Subviews
+
+    private var handleRow: some View {
+        Button(action: onTapHandle) {
+            HStack(spacing: Self.handleRowHSpacing) {
+                Text(handleDisplay)
+                    .font(.blip(size: Self.handleSize, weight: .semibold))
+                    .tracking(Self.handleTracking)
+                    .foregroundStyle(handleTint)
                 Spacer()
+                Text(profile?.handle == nil ? "Claim" : "Edit")
+                    .font(BlipTypography.caption)
+                    .foregroundStyle(BlipColor.textTertiary)
             }
+            .frame(minHeight: Self.handleRowMinHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 
-            if isDeleting {
-                Color.black.opacity(0.4).ignoresSafeArea()
-                ProgressView("deleting…")
-                    .controlSize(.large)
-                    .padding(24)
-                    .background(BlipColor.surfaceElevated, in: RoundedRectangle(cornerRadius: 12))
-            }
-        }
-        .confirmationDialog(
-            "Delete your blip account?",
-            isPresented: $showDeleteConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("delete forever", role: .destructive) {
-                Task { await runDelete() }
-            }
-            Button("cancel", role: .cancel) {}
-        } message: {
-            Text("This permanently removes your account, all your clips, and your membership in every blip. This cannot be undone.")
-        }
-        .sheet(isPresented: $showQuietHours) {
-            QuietHoursSheet(
-                start: users.profile?.quietHoursStart ?? 23,
-                end: users.profile?.quietHoursEnd ?? 7
-            )
+    private var memberSinceLabel: some View {
+        Text(memberSinceText)
+            .font(BlipTypography.caption)
+            .foregroundStyle(BlipColor.textSecondary)
+    }
+
+    private var statTilesRow: some View {
+        HStack(spacing: Self.tileSpacing) {
+            BlipStatTile(value: "\(profile?.totalClips ?? 0)", label: clipsLabel)
+            BlipStatTile(value: "\(profile?.streakCurrent ?? 0)", label: "day streak")
+            BlipStatTile(value: "\(profile?.friendsCount ?? 0)", label: friendsLabel)
+            BlipStatTile(value: "\(profile?.referralsCount ?? 0)", label: referralsLabel)
         }
     }
 
-    private var quietHoursLabel: String {
-        let start = users.profile?.quietHoursStart ?? 23
-        let end = users.profile?.quietHoursEnd ?? 7
-        return "\(formatHour(start)) – \(formatHour(end))"
+    private var referralProgressLabel: String {
+        guard let profile else { return "" }
+        let need = profile.referralsToNextSlot
+        return need == 1
+            ? "1 more referral unlocks another blip slot"
+            : "\(need) more referrals unlock another blip slot"
     }
 
-    private func runDelete() async {
-        isDeleting = true
-        deleteError = nil
-        do {
-            try await auth.deleteAccount()
-            // Auth state listener will route us out; dismiss for good measure.
-            dismiss()
-        } catch {
-            deleteError = error.localizedDescription
-        }
-        isDeleting = false
-    }
-}
+    // MARK: - Helpers
 
-private struct SettingsRow: View {
-    let title: String
-    var value: String? = nil
-    let tint: Color
-
-    var body: some View {
-        HStack {
-            Text(title)
-                .foregroundStyle(tint)
-            Spacer()
-            if let value {
-                Text(value)
-                    .foregroundStyle(BlipColor.textSecondary)
-            }
-            Image(systemName: "chevron.right")
-                .font(.footnote)
-                .foregroundStyle(BlipColor.textTertiary)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .contentShape(Rectangle())
-    }
-}
-
-private struct QuietHoursSheet: View {
-    @EnvironmentObject private var users: UserRepository
-    @Environment(\.dismiss) private var dismiss
-
-    @State var start: Int
-    @State var end: Int
-    @State private var isSaving = false
-    @State private var saveError: String?
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                BlipColor.background.ignoresSafeArea()
-
-                VStack(alignment: .leading, spacing: 24) {
-                    Text("no notifications between these hours.")
-                        .font(BlipTypography.body)
-                        .foregroundStyle(BlipColor.textSecondary)
-
-                    HStack(spacing: 16) {
-                        HourPicker(label: "from", hour: $start)
-                        HourPicker(label: "to", hour: $end)
-                    }
-
-                    if let saveError {
-                        Text(saveError)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    }
-
-                    Spacer()
-                }
-                .padding(20)
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("cancel") { dismiss() }
-                        .foregroundStyle(BlipColor.textPrimary)
-                }
-                ToolbarItem(placement: .principal) {
-                    Text("quiet hours")
-                        .font(BlipTypography.body)
-                        .foregroundStyle(BlipColor.textPrimary)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("save") {
-                        Task { await save() }
-                    }
-                    .foregroundStyle(BlipColor.accent)
-                    .disabled(isSaving)
-                }
-            }
-            .toolbarBackground(BlipColor.background, for: .navigationBar)
-        }
+    private var handleDisplay: String {
+        if let h = profile?.handle, !h.isEmpty { return "@\(h)" }
+        return "Claim a handle"
     }
 
-    private func save() async {
-        isSaving = true
-        saveError = nil
-        do {
-            try await users.updateQuietHours(start: start, end: end)
-            dismiss()
-        } catch {
-            saveError = error.localizedDescription
-        }
-        isSaving = false
+    private var handleTint: Color {
+        profile?.handle == nil ? BlipColor.textSecondary : BlipColor.textPrimary
+    }
+
+    private var memberSinceText: String {
+        guard let createdAt = profile?.createdAt else { return "joined recently" }
+        let days = daysBetween(createdAt, and: Date())
+        if days <= 0 { return "joined today" }
+        if days == 1 { return "joined 1 day ago" }
+        return "joined \(days) days ago"
+    }
+
+    private var clipsLabel: String {
+        let n = profile?.totalClips ?? 0
+        return n == 1 ? "clip" : "clips"
+    }
+
+    private var friendsLabel: String {
+        let n = profile?.friendsCount ?? 0
+        return n == 1 ? "friend" : "friends"
+    }
+
+    private var referralsLabel: String {
+        let n = profile?.referralsCount ?? 0
+        return n == 1 ? "invite" : "invites"
+    }
+
+    private func daysBetween(_ a: Date, and b: Date) -> Int {
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: a)
+        let end = cal.startOfDay(for: b)
+        return cal.dateComponents([.day], from: start, to: end).day ?? 0
     }
 }
 
-private struct HourPicker: View {
-    let label: String
-    @Binding var hour: Int
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-                .font(BlipTypography.caption)
-                .foregroundStyle(BlipColor.textTertiary)
-            Picker(label, selection: $hour) {
-                ForEach(0..<24, id: \.self) { h in
-                    Text(formatHour(h)).tag(h)
-                }
-            }
-            .pickerStyle(.wheel)
-            .frame(maxWidth: .infinity, maxHeight: 140)
-            .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 12))
-        }
-    }
-}
-
-func formatHour(_ h: Int) -> String {
-    let normalized = ((h % 24) + 24) % 24
-    let hour12 = normalized % 12 == 0 ? 12 : normalized % 12
-    let suffix = normalized < 12 ? "am" : "pm"
-    return "\(hour12)\(suffix)"
-}
-
-// MARK: - Theme Picker
-
-private struct ThemePicker: View {
-    @Binding var selection: ThemePreference
-
-    var body: some View {
-        HStack(spacing: 8) {
-            ForEach(ThemePreference.allCases) { option in
-                Button {
-                    withAnimation(.spring(duration: 0.25)) { selection = option }
-                } label: {
-                    VStack(spacing: 6) {
-                        Image(systemName: option.icon)
-                            .font(.system(size: 16))
-                        Text(option.label)
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                    .foregroundStyle(selection == option ? .black : BlipColor.textSecondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(
-                        selection == option ? BlipColor.accent : BlipColor.surface,
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-}
-
-#Preview {
-    ProfileView()
-        .environmentObject(AuthService())
-        .environmentObject(UserRepository())
-        .environmentObject(ThemeManager())
-}

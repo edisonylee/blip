@@ -23,7 +23,6 @@ struct PhoneAuthView: View {
     var body: some View {
         ZStack {
             BlipColor.background.ignoresSafeArea()
-            DoodleBackground(intensity: 0.7)
 
             VStack(spacing: 0) {
                 navBar
@@ -45,7 +44,7 @@ struct PhoneAuthView: View {
         HStack {
             Button(action: handleBack) {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.blip(size: 17, weight: .semibold))
                     .foregroundStyle(BlipColor.textPrimary)
                     .frame(width: 36, height: 36)
             }
@@ -61,10 +60,10 @@ struct PhoneAuthView: View {
         VStack(spacing: 28) {
             VStack(spacing: 6) {
                 Text("what's your number?")
-                    .font(.system(size: 26, weight: .black, design: .rounded))
+                    .font(.blip(size: 26, weight: .black, design: .rounded))
                     .foregroundStyle(BlipColor.textPrimary)
                 Text("we'll send a one-time code to verify it's you")
-                    .font(.system(size: 14))
+                    .font(.blip(size: 14))
                     .foregroundStyle(BlipColor.textTertiary)
                     .multilineTextAlignment(.center)
             }
@@ -76,12 +75,12 @@ struct PhoneAuthView: View {
                 Button { showCountryPicker = true } label: {
                     HStack(spacing: 6) {
                         Text(country.flag)
-                            .font(.system(size: 22))
+                            .font(.blip(size: 22))
                         Text(country.dialCode)
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.blip(size: 16, weight: .semibold))
                             .foregroundStyle(BlipColor.textPrimary)
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.blip(size: 11, weight: .semibold))
                             .foregroundStyle(BlipColor.textTertiary)
                     }
                     .padding(.horizontal, 14)
@@ -98,7 +97,7 @@ struct PhoneAuthView: View {
                 TextField("555 000 0000", text: $localNumber)
                     .keyboardType(.phonePad)
                     .textContentType(.telephoneNumber)
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.blip(size: 18, weight: .medium))
                     .foregroundStyle(BlipColor.textPrimary)
                     .frame(height: 52)
                     .padding(.horizontal, 14)
@@ -118,10 +117,10 @@ struct PhoneAuthView: View {
         VStack(spacing: 28) {
             VStack(spacing: 6) {
                 Text("check your texts")
-                    .font(.system(size: 26, weight: .black, design: .rounded))
+                    .font(.blip(size: 26, weight: .black, design: .rounded))
                     .foregroundStyle(BlipColor.textPrimary)
                 Text("we sent a 6-digit code to\n\(country.dialCode) \(localNumber)")
-                    .font(.system(size: 14))
+                    .font(.blip(size: 14))
                     .foregroundStyle(BlipColor.textTertiary)
                     .multilineTextAlignment(.center)
             }
@@ -131,7 +130,7 @@ struct PhoneAuthView: View {
             TextField("000000", text: $otpCode)
                 .keyboardType(.numberPad)
                 .textContentType(.oneTimeCode)
-                .font(.system(size: 36, weight: .bold, design: .monospaced))
+                .font(.blip(size: 36, weight: .bold, design: .monospaced))
                 .foregroundStyle(BlipColor.textPrimary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 220)
@@ -233,20 +232,20 @@ private struct CountryPickerSheet: View {
                     dismiss()
                 } label: {
                     HStack(spacing: 14) {
-                        Text(country.flag).font(.system(size: 24))
+                        Text(country.flag).font(.blip(size: 24))
                         VStack(alignment: .leading, spacing: 2) {
                             Text(country.name)
-                                .font(.system(size: 15))
+                                .font(.blip(size: 15))
                                 .foregroundStyle(BlipColor.textPrimary)
                             Text(country.dialCode)
-                                .font(.system(size: 12))
+                                .font(.blip(size: 12))
                                 .foregroundStyle(BlipColor.textTertiary)
                         }
                         Spacer()
                         if country == selection {
                             Image(systemName: "checkmark")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(BlipColor.accent)
+                                .font(.blip(size: 13, weight: .semibold))
+                                .foregroundStyle(BlipColor.textPrimary)
                         }
                     }
                     .contentShape(Rectangle())
@@ -263,7 +262,8 @@ private struct CountryPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
-                        .foregroundStyle(BlipColor.accent)
+                        .foregroundStyle(BlipColor.textPrimary)
+                        .fontWeight(.semibold)
                 }
             }
             .toolbarBackground(BlipColor.background, for: .navigationBar)

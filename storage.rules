@@ -17,8 +17,21 @@ service firebase.storage {
                    && request.resource.contentType.matches('video/.*');
     }
 
-    // Stitched daily output: blips/{blipId}/days/{dateKey}/stitched.mp4
-    // Written by Cloud Functions (admin SDK), readable by members.
+    // Per-user stitched export: blips/{blipId}/days/{dateKey}/exports/{uid}/stitched.mp4
+    // Each member's curated stitch is private to them (different exclusion sets
+    // produce different stitches). Written by Cloud Functions (admin SDK).
+    match /blips/{blipId}/days/{dateKey}/exports/{uid}/stitched.mp4 {
+      allow read: if request.auth != null
+                  && request.auth.uid == uid
+                  && firestore.exists(/databases/(default)/documents/blips/$(blipId))
+                  && request.auth.uid in firestore.get(/databases/(default)/documents/blips/$(blipId)).data.members;
+      allow write: if false;
+    }
+
+    // Legacy shared stitched output. Older clients (and any clip docs that
+    // already point here) may still try to read it; reads stay open to members
+    // for backward compatibility. Writes already blocked. Remove once nothing
+    // references this path.
     match /blips/{blipId}/days/{dateKey}/stitched.mp4 {
       allow read: if request.auth != null
                   && firestore.exists(/databases/(default)/documents/blips/$(blipId))

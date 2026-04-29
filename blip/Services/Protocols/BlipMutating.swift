@@ -7,4 +7,5 @@ import Foundation
 protocol BlipMutating {
     func createBlip(name: String, size: Int, ownerUid: String, timezoneIdentifier: String) async throws -> Blip
     func joinBlip(code: String, uid: String) async throws -> Blip
+    func updateMemberOrder(blipId: String, members: [String]) async throws
 }

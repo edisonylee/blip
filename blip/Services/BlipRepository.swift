@@ -88,6 +88,21 @@ final class BlipRepository: ObservableObject, BlipRepositoryProtocol, BlipMutati
         )
     }
 
+    /// Owner-only reorder of `members`. The array order is the seat order used by the
+    /// stitched export and `MemberGrid`, so writing it back makes the new order visible
+    /// everywhere the next snapshot tick lands.
+    /// Length is preserved — the `isLeavingSelf` rule branch can't apply, so this only
+    /// passes the firestore.rules owner branch.
+    func updateMemberOrder(blipId: String, members: [String]) async throws {
+        guard !blipId.isEmpty else { throw BlipRepoError.emptyBlipId }
+        guard !members.isEmpty else { throw BlipRepoError.emptyMembers }
+
+        log.info("updateMemberOrder blipId=\(blipId, privacy: .public) count=\(members.count, privacy: .public)")
+        try await db.collection("blips").document(blipId).updateData([
+            "members": members
+        ])
+    }
+
     /// Join via the legacy code (parity). Universal Link join lands when DeepLinkRouter ships.
     func joinBlip(code: String, uid: String) async throws -> Blip {
         let normalized = code.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -152,6 +167,8 @@ enum BlipRepoError: LocalizedError {
     case emptyCode
     case codeNotFound
     case blipFull
+    case emptyBlipId
+    case emptyMembers
 
     var errorDescription: String? {
         switch self {
@@ -160,6 +177,8 @@ enum BlipRepoError: LocalizedError {
         case .emptyCode: return "enter a code."
         case .codeNotFound: return "no blip with that code."
         case .blipFull: return "this blip is full."
+        case .emptyBlipId: return "missing blip id."
+        case .emptyMembers: return "members list can't be empty."
         }
     }
 }

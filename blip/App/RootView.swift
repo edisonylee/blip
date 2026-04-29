@@ -5,6 +5,8 @@ struct RootView: View {
     @EnvironmentObject private var repo: BlipRepository
     @EnvironmentObject private var moderation: ModerationService
     @EnvironmentObject private var users: UserRepository
+    @EnvironmentObject private var friendsRepo: FriendsRepository
+    @EnvironmentObject private var deepLinks: DeepLinkRouter
 
     var body: some View {
         Group {
@@ -18,6 +20,10 @@ struct RootView: View {
             authedBody
             #endif
         }
+        // Default Geist for any Text without an explicit font (SwiftUI inherits
+        // through the environment). Tokens like `BlipTypography.title` or
+        // `Font.blip(...)` still override per call site.
+        .environment(\.font, BlipTypography.body)
     }
 
     @ViewBuilder
@@ -33,9 +39,16 @@ struct RootView: View {
         case .signedIn(let uid):
             HomeView()
                 .task(id: uid) {
+                    // Consume any referrer uid stashed by an invite deep link
+                    // before signup. `ensureUserDoc` only honours it on first
+                    // create; subsequent sign-ins ignore (rules + trigger
+                    // wouldn't let us re-credit anyway).
+                    let ref = deepLinks.consumePendingReferrerUid()
+                    try? await users.ensureUserDoc(uid: uid, referredByUid: ref)
                     repo.startListening(for: uid)
                     moderation.startListening(for: uid)
                     users.startListening(for: uid)
+                    friendsRepo.startListening(for: uid)
                 }
         }
     }

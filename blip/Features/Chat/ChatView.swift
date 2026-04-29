@@ -65,10 +65,10 @@ struct ChatView: View {
 
             Button(action: send) {
                 Image(systemName: "arrow.up")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(canSend ? .black : BlipColor.textTertiary)
+                    .font(.blip(size: 16, weight: .semibold))
+                    .foregroundStyle(canSend ? BlipColor.accentNeutralOn : BlipColor.textTertiary)
                     .frame(width: 36, height: 36)
-                    .background(canSend ? BlipColor.accent : BlipColor.surface, in: Circle())
+                    .background(canSend ? BlipColor.accentNeutral : BlipColor.surface, in: Circle())
             }
             .disabled(!canSend)
         }
@@ -104,14 +104,13 @@ private struct MessageRow: View {
                 if let text = message.text {
                     Text(text)
                         .font(BlipTypography.body)
-                        .foregroundStyle(BlipColor.textPrimary)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .background(
-                            isMe ? BlipColor.accent.opacity(0.9) : BlipColor.surface,
+                            isMe ? BlipColor.accentNeutral : BlipColor.surface,
                             in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                         )
-                        .foregroundStyle(isMe ? .black : BlipColor.textPrimary)
+                        .foregroundStyle(isMe ? BlipColor.accentNeutralOn : BlipColor.textPrimary)
                 }
             }
             if !isMe { Spacer() }

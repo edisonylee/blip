@@ -14,6 +14,9 @@ struct blipApp: App {
     @StateObject private var repo = BlipRepository()
     @StateObject private var moderation = ModerationService()
     @StateObject private var users = UserRepository()
+    @StateObject private var friendsRepo = FriendsRepository()
+    @StateObject private var friendsService = FriendsService()
+    @StateObject private var userDirectory = FirestoreUserDirectory()
     @StateObject private var deepLinks = DeepLinkRouter()
     @StateObject private var theme = ThemeManager()
 
@@ -24,6 +27,9 @@ struct blipApp: App {
                 .environmentObject(repo)
                 .environmentObject(moderation)
                 .environmentObject(users)
+                .environmentObject(friendsRepo)
+                .environmentObject(friendsService)
+                .environmentObject(userDirectory)
                 .environmentObject(deepLinks)
                 .environmentObject(theme)
                 .preferredColorScheme(theme.preference.colorScheme)
@@ -32,7 +38,11 @@ struct blipApp: App {
                     appDelegate.deepLinks = deepLinks
                 }
                 .onOpenURL { url in
-                    _ = Auth.auth().canHandle(url)
+                    // Firebase Auth gets first crack (phone/email link verifications).
+                    // If it doesn't claim the URL, forward to our router so
+                    // `blip://invite?ref=…` and `blip://blip/…` schemes route.
+                    if Auth.auth().canHandle(url) { return }
+                    deepLinks.handle(url: url)
                 }
         }
     }
@@ -48,10 +58,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     ) -> Bool {
         FirebaseApp.configure()
 
-        // Bypass APNs/reCAPTCHA in debug — disables app verification for phone auth using Firebase Console test numbers.
+        // DEBUG: bypass APNs/reCAPTCHA so Firebase Console "test phone numbers"
+        // work on simulator + non-paid-developer devices. Production builds always
+        // run real verification (APNs silent push) — see setAPNSToken below.
         #if DEBUG
-        // In recent FirebaseAuth versions, AuthSettings initializer is internal; use the existing optional instance.
-        // This disables APNs/reCAPTCHA for phone auth in debug when using Firebase Console test numbers.
         Auth.auth().settings?.isAppVerificationDisabledForTesting = true
         #endif
 
@@ -59,6 +69,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         // real push delivery; without it FCM still issues a token but messages won't arrive.
         Messaging.messaging().delegate = self
         UNUserNotificationCenter.current().delegate = self
+
+        // Register for remote notifications on launch (no permission prompt — that
+        // only gates user-visible alerts). Phone Auth needs the APNs token to do
+        // silent-push verification in release builds.
+        application.registerForRemoteNotifications()
         return true
     }
 
@@ -77,6 +92,13 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
+        // Hand the APNs token to Firebase Auth so phone-auth silent-push
+        // verification can complete without falling back to reCAPTCHA.
+        #if DEBUG
+        Auth.auth().setAPNSToken(deviceToken, type: .sandbox)
+        #else
+        Auth.auth().setAPNSToken(deviceToken, type: .prod)
+        #endif
         Messaging.messaging().apnsToken = deviceToken
     }
 

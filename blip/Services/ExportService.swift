@@ -15,6 +15,9 @@ final class ExportService: ObservableObject {
 
     private let functions = Functions.functions(region: "us-central1")
 
+    /// Stitch today's clips for the current user. The function writes to a
+    /// per-user Storage path so concurrent stitches by different members don't
+    /// overwrite each other.
     func stitch(blipId: String) async {
         status = .stitching
         do {

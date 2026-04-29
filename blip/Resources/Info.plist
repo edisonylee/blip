@@ -33,12 +33,25 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>instagram-stories</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>blip uses your camera to record your daily clips for your group's blip.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>blip uses your microphone so your clips have sound.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Save the day's stitched vlog to your photos.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Fonts/Geist-Light.otf</string>
+		<string>Fonts/Geist-Regular.otf</string>
+		<string>Fonts/Geist-Medium.otf</string>
+		<string>Fonts/Geist-SemiBold.otf</string>
+		<string>Fonts/Geist-Bold.otf</string>
+		<string>Fonts/Geist-Black.otf</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

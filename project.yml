@@ -29,6 +29,7 @@ targets:
       - path: blip
         excludes:
           - "**/.DS_Store"
+          - "Resources/geist-font-*/**"
     info:
       path: blip/Resources/Info.plist
       properties:
@@ -39,6 +40,13 @@ targets:
         NSCameraUsageDescription: "blip uses your camera to record your daily clips for your group's blip."
         NSMicrophoneUsageDescription: "blip uses your microphone so your clips have sound."
         NSPhotoLibraryAddUsageDescription: "Save the day's stitched vlog to your photos."
+        UIAppFonts:
+          - Fonts/Geist-Light.otf
+          - Fonts/Geist-Regular.otf
+          - Fonts/Geist-Medium.otf
+          - Fonts/Geist-SemiBold.otf
+          - Fonts/Geist-Bold.otf
+          - Fonts/Geist-Black.otf
         UILaunchScreen:
           UIColorName: ""
         UISupportedInterfaceOrientations:
@@ -51,6 +59,11 @@ targets:
           - CFBundleTypeRole: Editor
             CFBundleURLSchemes:
               - app-1-625817268885-ios-3afc6dbd3b3bd631d0619c
+        # Schemes we probe via UIApplication.canOpenURL — required by iOS 9+
+        # privacy rules. `instagram-stories` powers the direct "share to story"
+        # button in ExportView (skips the share sheet for a one-tap IG flow).
+        LSApplicationQueriesSchemes:
+          - instagram-stories
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.edisonlee.blip
@@ -76,6 +89,7 @@ targets:
       properties:
         com.apple.developer.applesignin:
           - Default
+        aps-environment: development
 
 schemes:
   blip:

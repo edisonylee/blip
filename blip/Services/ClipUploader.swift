@@ -10,7 +10,7 @@ private let log = Logger(subsystem: "app.blip.ios", category: "ClipUploader")
 /// Firestore clip document. Cross-posts via the `sharedToBlipIds` array — the
 /// same Storage object is referenced from each target blip's clips subcollection.
 @MainActor
-final class ClipUploader: ObservableObject {
+final class ClipUploader: ObservableObject, ClipUploading {
     @Published private(set) var isUploading = false
     @Published private(set) var progress: Double = 0
     @Published private(set) var lastError: String?

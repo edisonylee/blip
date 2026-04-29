@@ -8,10 +8,15 @@ final class HomeViewModel: ObservableObject {
     // MARK: - Derived display helpers
 
     func subtitle(for blip: Blip) -> String {
-        "\(blip.members.count) of \(blip.size) members"
+        let n = blip.members.count
+        if n <= 1 { return "just you" }
+        return "\(n) members"
     }
 
     func progress(for blip: Blip) -> BlipCardProgress {
+        // `lastClipAt` and `unreadCount` are deferred — they require home-level
+        // clip aggregation (per plan's known-limitations note). For now the row
+        // still renders cleanly: trailing chevron + no timestamp.
         BlipCardProgress(
             hourCompletion: nil,
             members: blip.members.map { uid in

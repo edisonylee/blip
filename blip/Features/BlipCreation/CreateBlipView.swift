@@ -28,7 +28,7 @@ struct CreateBlipView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { dismiss() } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .medium))
+                            .font(.blip(size: 16, weight: .medium))
                             .foregroundStyle(BlipColor.textSecondary)
                     }
                     .accessibilityLabel("Close")
@@ -44,10 +44,10 @@ struct CreateBlipView: View {
     private var header: some View {
         VStack(spacing: 6) {
             Text("name your crew")
-                .font(.system(size: 28, weight: .black, design: .rounded))
+                .font(.blip(size: 28, weight: .black, design: .rounded))
                 .foregroundStyle(BlipColor.textPrimary)
             Text("pick a name and how many people can join")
-                .font(.system(size: 14))
+                .font(.blip(size: 14))
                 .foregroundStyle(BlipColor.textTertiary)
                 .multilineTextAlignment(.center)
         }
@@ -71,14 +71,14 @@ struct CreateBlipView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text("group size")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.blip(size: 11, weight: .semibold))
                         .foregroundStyle(BlipColor.textTertiary)
                         .textCase(.uppercase)
                         .tracking(0.8)
                     Spacer()
                     Text(vm.sizeDescription(vm.size))
-                        .font(.system(size: 13))
-                        .foregroundStyle(BlipColor.accent)
+                        .font(.blip(size: 13))
+                        .foregroundStyle(BlipColor.textPrimary)
                         .animation(.easeOut(duration: 0.15), value: vm.size)
                 }
 
@@ -88,13 +88,13 @@ struct CreateBlipView: View {
                             withAnimation(.spring(duration: 0.2)) { vm.size = n }
                         } label: {
                             Text("\(n)")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.blip(size: 15, weight: .semibold))
                                 .frame(maxWidth: .infinity, minHeight: 44)
                                 .background(
-                                    vm.size == n ? BlipColor.accent : BlipColor.surface,
+                                    vm.size == n ? BlipColor.accentNeutral : BlipColor.surface,
                                     in: RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 )
-                                .foregroundStyle(vm.size == n ? .black : BlipColor.textSecondary)
+                                .foregroundStyle(vm.size == n ? BlipColor.accentNeutralOn : BlipColor.textSecondary)
                                 .scaleEffect(vm.size == n ? 1.05 : 1)
                                 .animation(.spring(duration: 0.2), value: vm.size)
                         }

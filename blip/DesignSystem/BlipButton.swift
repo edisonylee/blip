@@ -2,24 +2,31 @@ import SwiftUI
 
 // MARK: - Button styles
 
-/// Full-width amber CTA. Use once per screen.
+/// Full-width neutral CTA — white-on-black in dark, inverse in light.
+/// Contrast (not hue) carries the primary action.
 struct BlipPrimaryButtonStyle: ButtonStyle {
     var isLoading = false
+
+    private static let cornerRadius: CGFloat = 10
+    private static let height: CGFloat = 52
 
     func makeBody(configuration: Configuration) -> some View {
         ZStack {
             configuration.label
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.black)
+                .font(.blip(size: 16, weight: .semibold))
+                .tracking(-0.2)
+                .foregroundStyle(BlipColor.accentNeutralOn)
                 .opacity(isLoading ? 0 : 1)
             if isLoading {
-                ProgressView().tint(.black)
+                ProgressView().tint(BlipColor.accentNeutralOn)
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 52)
-        .background(BlipColor.accent)
-        .clipShape(Capsule())
+        .frame(height: Self.height)
+        .background(
+            BlipColor.accentNeutral,
+            in: RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+        )
         .scaleEffect(configuration.isPressed ? 0.97 : 1)
         .animation(.spring(duration: 0.2), value: configuration.isPressed)
     }
@@ -27,15 +34,25 @@ struct BlipPrimaryButtonStyle: ButtonStyle {
 
 /// Full-width surface-tinted secondary action.
 struct BlipSecondaryButtonStyle: ButtonStyle {
+
+    private static let cornerRadius: CGFloat = 10
+    private static let height: CGFloat = 52
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 16, weight: .medium))
+            .font(.blip(size: 16, weight: .medium))
+            .tracking(-0.2)
             .foregroundStyle(BlipColor.textPrimary)
             .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .background(BlipColor.surface)
-            .clipShape(Capsule())
-            .overlay(Capsule().stroke(BlipColor.border, lineWidth: 0.5))
+            .frame(height: Self.height)
+            .background(
+                BlipColor.surface,
+                in: RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+                    .stroke(BlipColor.border, lineWidth: 1)
+            )
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.spring(duration: 0.2), value: configuration.isPressed)
     }
@@ -45,7 +62,7 @@ struct BlipSecondaryButtonStyle: ButtonStyle {
 struct BlipGhostButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 14))
+            .font(.blip(size: 14))
             .foregroundStyle(BlipColor.textTertiary)
             .opacity(configuration.isPressed ? 0.6 : 1)
     }

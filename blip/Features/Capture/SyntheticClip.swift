@@ -103,8 +103,12 @@ enum SyntheticClip {
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
         let label = "BLIP \(frameIndex + 1)/\(total)"
+        // Prefer bundled Geist Black for the synthetic preview frame; fall
+        // back to SF Heavy on the off-chance the font failed to register.
+        let labelFont = UIFont(name: "Geist-Black", size: 60)
+            ?? UIFont.systemFont(ofSize: 60, weight: .heavy)
         let attrString = NSAttributedString(string: label, attributes: [
-            .font: UIFont.systemFont(ofSize: 60, weight: .heavy),
+            .font: labelFont,
             .foregroundColor: UIColor.white,
         ])
         UIGraphicsPushContext(context)

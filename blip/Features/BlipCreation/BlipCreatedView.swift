@@ -5,6 +5,7 @@ struct BlipCreatedView: View {
     let blip: Blip
     let onDone: () -> Void
 
+    @EnvironmentObject private var auth: AuthService
     @State private var showShareSheet = false
 
     var body: some View {
@@ -17,7 +18,7 @@ struct BlipCreatedView: View {
                     .foregroundStyle(BlipColor.textPrimary)
 
                 Text(blip.joinCode)
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.blip(size: 18, weight: .semibold))
                     .foregroundStyle(BlipColor.textSecondary)
                     .textSelection(.enabled)
                     .padding(.top, 4)
@@ -62,7 +63,12 @@ struct BlipCreatedView: View {
     }
 
     private var inviteShareText: String {
-        "join my blip \"\(blip.name)\" — code: \(blip.joinCode)"
+        InviteShare.text(blipName: blip.name, joinCode: blip.joinCode, referrerUid: currentUid)
+    }
+
+    private var currentUid: String? {
+        if case .signedIn(let uid) = auth.state { return uid }
+        return nil
     }
 }
 

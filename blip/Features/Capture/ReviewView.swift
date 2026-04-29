@@ -39,7 +39,7 @@ struct ReviewView: View {
 
                     if vm.isUploading {
                         ProgressView(value: vm.uploadProgress)
-                            .tint(BlipColor.accent)
+                            .tint(BlipColor.textPrimary)
                     }
 
                     ErrorText(message: vm.errorMessage)
@@ -61,10 +61,11 @@ struct ReviewView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: post) {
                     if vm.isUploading {
-                        ProgressView().tint(BlipColor.accent)
+                        ProgressView().tint(BlipColor.textPrimary)
                     } else {
                         Image(systemName: "arrow.up")
-                            .foregroundStyle(vm.canPost ? BlipColor.accent : BlipColor.textTertiary)
+                            .foregroundStyle(vm.canPost ? BlipColor.textPrimary : BlipColor.textTertiary)
+                            .fontWeight(.semibold)
                     }
                 }
                 .disabled(!vm.canPost || vm.isUploading)
@@ -78,12 +79,8 @@ struct ReviewView: View {
 
     private var clipPreview: some View {
         VideoPreview(url: fileURL)
-            .overlay(alignment: .top) {
-                Text(currentHourString)
-                    .font(BlipTypography.clipTimestamp)
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.6), radius: 6, y: 2)
-                    .padding(.top, 16)
+            .overlay {
+                ClipTimestampLabel.now()
             }
     }
 
@@ -95,7 +92,7 @@ struct ReviewView: View {
                 } label: {
                     HStack {
                         Image(systemName: vm.sendToBlipIds.contains(dest.id) ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(vm.sendToBlipIds.contains(dest.id) ? BlipColor.accent : BlipColor.textTertiary)
+                            .foregroundStyle(vm.sendToBlipIds.contains(dest.id) ? BlipColor.textPrimary : BlipColor.textTertiary)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(dest.name)
                                 .font(BlipTypography.body)
@@ -126,12 +123,6 @@ struct ReviewView: View {
             list.append(Destination(id: other.id, name: other.name, subtitle: "\(other.members.count) members"))
         }
         return list
-    }
-
-    private var currentHourString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h a"
-        return formatter.string(from: Date()).lowercased()
     }
 
     private func post() {

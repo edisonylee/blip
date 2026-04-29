@@ -60,7 +60,8 @@ export const onClipPosted = onDocumentCreated(
 
     const isLastOne = remaining.length === 1;
     const halfwayThreshold = Math.ceil(total / 2);
-    const justCrossedHalfway = postersCount === halfwayThreshold;
+    // Use >= since the tier-doc create-once below handles dedup under parallel writes.
+    const justCrossedHalfway = postersCount >= halfwayThreshold;
 
     let shouldNotify: boolean;
     if (isLastOne) shouldNotify = true;
@@ -70,6 +71,34 @@ export const onClipPosted = onDocumentCreated(
     if (!shouldNotify) {
       logger.info("throttled", { blipId, hour, postersCount, total });
       return;
+    }
+
+    // Tier-doc idempotency: under parallel writes, two invocations may both observe
+    // the threshold. Try to claim the tier doc with create(); ALREADY_EXISTS (code 6)
+    // means another invocation already fired this tier — skip silently.
+    // Every-post tier (2–4 members) does not dedupe — every post is a distinct ping.
+    const tier: "halfway" | "last-one" | "every-post" =
+      isLastOne ? "last-one" : total <= 4 ? "every-post" : "halfway";
+    if (tier === "halfway" || tier === "last-one") {
+      const tierKey = tier === "halfway" ? `${hour}_halfway` : `${hour}_lastone`;
+      const tierRef = db
+        .collection("blips").doc(blipId)
+        .collection("days").doc(dateKey)
+        .collection("notified").doc(tierKey);
+      try {
+        await tierRef.create({
+          tier,
+          hour,
+          firedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      } catch (err) {
+        const code = (err as { code?: number }).code;
+        if (code === 6) {
+          logger.info("tier already fired, skip", { blipId, hour, tier });
+          return;
+        }
+        throw err;
+      }
     }
 
     // Best-effort poster name for the per-post copy
@@ -113,6 +142,8 @@ export const onClipPosted = onDocumentCreated(
           tokens,
           notification: { title, body },
           data: { deepLink: `blip://blip/${blipId}` },
+        }).catch((err) => {
+          logger.warn("send failed", { uid, err: String(err) });
         }),
       );
       sent++;
@@ -125,7 +156,7 @@ export const onClipPosted = onDocumentCreated(
       postersCount,
       total,
       remaining: remaining.length,
-      tier: isLastOne ? "last-one" : total <= 4 ? "every-post" : "halfway",
+      tier,
       sent,
       skippedQuiet,
       skippedNoToken,

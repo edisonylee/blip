@@ -8,7 +8,6 @@ struct OnboardingView: View {
     var body: some View {
         ZStack {
             BlipColor.background.ignoresSafeArea()
-            DoodleBackground(intensity: 1.0)
 
             VStack(spacing: 0) {
                 Spacer()
@@ -17,7 +16,8 @@ struct OnboardingView: View {
                 VStack(spacing: 12) {
                     Text("blip")
                         .font(BlipTypography.wordmark)
-                        .foregroundStyle(BlipColor.accent)
+                        .tracking(BlipTypography.titleTracking)
+                        .foregroundStyle(BlipColor.textPrimary)
 
                     Text("a day with your people,\nstitched together.")
                         .font(BlipTypography.body)

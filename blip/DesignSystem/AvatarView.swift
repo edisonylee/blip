@@ -14,7 +14,7 @@ struct AvatarView: View {
                 .fill(hasPosted ? BlipColor.accent.opacity(0.2) : BlipColor.surfaceElevated)
                 .overlay(Circle().stroke(BlipColor.background, lineWidth: 1.5))
             Text(initials)
-                .font(.system(size: size * 0.38, weight: .semibold))
+                .font(.blip(size: size * 0.38, weight: .semibold))
                 .foregroundStyle(hasPosted ? BlipColor.accent : BlipColor.textTertiary)
         }
         .frame(width: size, height: size)
@@ -34,7 +34,7 @@ struct AvatarRow: View {
             }
             if members.count > maxVisible {
                 Text("+\(members.count - maxVisible)")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.blip(size: 10, weight: .semibold))
                     .foregroundStyle(BlipColor.textTertiary)
                     .padding(.leading, size * 0.4)
             }

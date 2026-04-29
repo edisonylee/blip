@@ -177,7 +177,18 @@ final class CaptureSession: ObservableObject {
                 elapsedTask?.cancel()
                 Task { @MainActor in self.state = .ready; self.recordingElapsed = 0 }
             }
-            return try await SyntheticClip.generate()
+            // SyntheticClip.generate() runs as fast as the simulator can encode
+            // (often <2s, sometimes >2s). Real recording is hard-capped at
+            // clipDuration via movieOutput.maxRecordedDuration; mirror that here
+            // so the UI doesn't sit on .recording until encoding finishes.
+            let recordStart = Date()
+            let url = try await SyntheticClip.generate()
+            let elapsed = Date().timeIntervalSince(recordStart)
+            let remaining = Self.clipDuration - elapsed
+            if remaining > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+            }
+            return url
         }
         #endif
 

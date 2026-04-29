@@ -11,3 +11,7 @@ export { exportStitch } from "./exportStitch";
 export { sendHourlyPrompt } from "./sendHourlyPrompt";
 export { deleteAccount } from "./deleteAccount";
 export { onReport } from "./onReport";
+export { onNudgeCreated } from "./onNudge";
+export { onClipCreatedUpdateStats, onFriendshipChangeUpdateCount } from "./userStats";
+export { onUserCreated } from "./onUserCreated";
+export { claimReferral } from "./claimReferral";
