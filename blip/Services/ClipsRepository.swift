@@ -65,6 +65,28 @@ final class ClipsRepository: ObservableObject {
         blipId = nil
     }
 
+    // MARK: - Mutations (long-press menu, screen-10 parity)
+
+    func deleteClip(_ clip: BlipClip) async throws {
+        guard let blipId else { return }
+        let tz = TimeZone.current
+        let dateKey = Self.dateKey(for: clip.createdAt, in: tz)
+        try await db.collection("blips").document(blipId)
+            .collection("days").document(dateKey)
+            .collection("clips").document(clip.id)
+            .delete()
+    }
+
+    func updateCaption(_ clip: BlipClip, caption: String) async throws {
+        guard let blipId else { return }
+        let tz = TimeZone.current
+        let dateKey = Self.dateKey(for: clip.createdAt, in: tz)
+        try await db.collection("blips").document(blipId)
+            .collection("days").document(dateKey)
+            .collection("clips").document(clip.id)
+            .updateData(["caption": caption])
+    }
+
     // MARK: - Helpers
 
     static func dateKey(for date: Date, in tz: TimeZone) -> String {

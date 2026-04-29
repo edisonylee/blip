@@ -12,6 +12,7 @@ struct BlipDetailView: View {
     @State private var showShareSheet = false
     @State private var showMembers = false
     @State private var showCapture = false
+    @State private var captionEditingClip: BlipClip?
 
     var body: some View {
         ZStack {
@@ -32,6 +33,12 @@ struct BlipDetailView: View {
                     ForEach(otherHoursWithClips, id: \.self) { hour in
                         ForEach(clips.clipsByHour[hour] ?? []) { clip in
                             PostedClipSlot(clip: clip)
+                                .clipContextMenu(
+                                    clip: clip,
+                                    isAuthor: isAuthor(of: clip),
+                                    onDelete: { Task { try? await clips.deleteClip(clip) } },
+                                    onEditCaption: { captionEditingClip = clip }
+                                )
                         }
                     }
 
@@ -91,6 +98,16 @@ struct BlipDetailView: View {
                 CaptureView(blip: blip, onPosted: { showCapture = false })
             }
         }
+        .sheet(item: $captionEditingClip) { clip in
+            EditCaptionSheet(clip: clip) { newCaption in
+                try? await clips.updateCaption(clip, caption: newCaption)
+            }
+        }
+    }
+
+    private func isAuthor(of clip: BlipClip) -> Bool {
+        guard case .signedIn(let uid) = auth.state else { return false }
+        return clip.uid == uid
     }
 
     private var emptySeatCount: Int {

@@ -3,13 +3,16 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject private var auth: AuthService
     @EnvironmentObject private var repo: BlipRepository
+    @EnvironmentObject private var deepLinks: DeepLinkRouter
 
     @State private var showPlusMenu = false
     @State private var creationDestination: CreationDestination?
     @State private var showProfile = false
+    @State private var path = NavigationPath()
+    @State private var pendingCaptureBlip: Blip?
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ZStack {
                 BlipColor.background.ignoresSafeArea()
 
@@ -89,7 +92,33 @@ struct HomeView: View {
             .sheet(isPresented: $showProfile) {
                 ProfileView()
             }
+            .fullScreenCover(item: $pendingCaptureBlip) { blip in
+                NavigationStack {
+                    CaptureView(blip: blip, onPosted: { pendingCaptureBlip = nil })
+                }
+            }
         }
+        .onChange(of: deepLinks.pending) { _, action in
+            handle(action)
+        }
+        .onAppear { handle(deepLinks.pending) }
+    }
+
+    /// Notification → navigation. Consumes the pending action so it fires once.
+    private func handle(_ action: DeepLinkRouter.Action?) {
+        guard let action else { return }
+        switch action {
+        case .openCapture:
+            // Pick the first non-solo blip; if none, fall back to no-op (user has no blip yet).
+            if let target = repo.blips.first {
+                pendingCaptureBlip = target
+            }
+        case .openBlip(let id):
+            if let blip = repo.blips.first(where: { $0.id == id }) {
+                path = NavigationPath([blip])
+            }
+        }
+        deepLinks.consume()
     }
 
     private var currentUid: String {
