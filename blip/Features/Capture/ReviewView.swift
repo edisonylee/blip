@@ -1,4 +1,5 @@
 import AVKit
+import FirebaseAuth
 import FirebaseFirestore
 import SwiftUI
 
@@ -160,7 +161,22 @@ struct ReviewView: View {
                 let snapshot = try await Firestore.firestore()
                     .collection("blips").document(blip.id).getDocument()
                 let liveMembers = (snapshot.data()?["members"] as? [String]) ?? []
-                print("[blip-post] uid=\(uid) blipId=\(blip.id) liveMembers=\(liveMembers)")
+                let sdkUid = Auth.auth().currentUser?.uid ?? "<nil>"
+
+                print("[blip-diag] AuthService.state uid: \(uid)")
+                print("[blip-diag] SDK currentUser uid:  \(sdkUid)")
+                print("[blip-diag] State==SDK?           \(uid == sdkUid)")
+                print("[blip-diag] blipId:               \(blip.id)")
+                print("[blip-diag] liveMembers:          \(liveMembers)")
+                for (idx, m) in liveMembers.enumerated() {
+                    let same = m == uid
+                    print("[blip-diag]   members[\(idx)] match=\(same) value=\(m)")
+                    if !same {
+                        print("[blip-diag]   uid bytes:    \(uid.unicodeScalars.map { String(format: "%02X", $0.value) }.joined(separator: " "))")
+                        print("[blip-diag]   member bytes: \(m.unicodeScalars.map { String(format: "%02X", $0.value) }.joined(separator: " "))")
+                    }
+                }
+
                 guard liveMembers.contains(uid) else {
                     postError = "you're not a member of this blip — try the join code."
                     return

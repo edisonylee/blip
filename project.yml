@@ -49,7 +49,7 @@ targets:
           - remote-notification
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.edisonlee.blip.dev
+        PRODUCT_BUNDLE_IDENTIFIER: com.edisonlee.blip
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
         SWIFT_EMIT_LOC_STRINGS: YES
