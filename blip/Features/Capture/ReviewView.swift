@@ -140,8 +140,9 @@ struct ReviewView: View {
     private var canPost: Bool { !sendToBlipIds.isEmpty }
 
     private var currentHourString: String {
-        let h = Calendar.current.component(.hour, from: Date())
-        return String(format: "%02d:00", h)
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h a"
+        return formatter.string(from: Date()).lowercased()
     }
 
     private func post() {
@@ -170,23 +171,25 @@ struct ReviewView: View {
 private struct VideoPreview: UIViewControllerRepresentable {
     let url: URL
 
+    final class Coordinator {
+        var looper: AVPlayerLooper?
+        var queuePlayer: AVQueuePlayer?
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let player = AVPlayer(url: url)
-        player.actionAtItemEnd = .none
+        let item = AVPlayerItem(url: url)
+        let queuePlayer = AVQueuePlayer()
+        let looper = AVPlayerLooper(player: queuePlayer, templateItem: item)
+        context.coordinator.queuePlayer = queuePlayer
+        context.coordinator.looper = looper
+
         let vc = AVPlayerViewController()
-        vc.player = player
+        vc.player = queuePlayer
         vc.showsPlaybackControls = false
         vc.videoGravity = .resizeAspectFill
-
-        NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: player.currentItem,
-            queue: .main
-        ) { _ in
-            player.seek(to: .zero)
-            player.play()
-        }
-        player.play()
+        queuePlayer.play()
         return vc
     }
 

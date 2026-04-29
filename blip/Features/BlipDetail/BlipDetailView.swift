@@ -73,6 +73,12 @@ struct BlipDetailView: View {
                             .foregroundStyle(BlipColor.textPrimary)
                     }
                     NavigationLink {
+                        ArchiveView(blip: blip)
+                    } label: {
+                        Image(systemName: "calendar")
+                            .foregroundStyle(BlipColor.textPrimary)
+                    }
+                    NavigationLink {
                         ExportView(blip: blip)
                     } label: {
                         Image(systemName: "film")
