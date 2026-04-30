@@ -58,6 +58,7 @@ struct RootView: View {
         id: "debug-blip",
         name: "Debug",
         ownerUid: "debug-uid",
+        adminUids: ["debug-uid"],
         members: ["debug-uid"],
         size: 1,
         joinCode: "debug",

@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "chats": {
+      "$blipId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    }
+  }
+}

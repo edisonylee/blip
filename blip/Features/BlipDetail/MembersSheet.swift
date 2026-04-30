@@ -91,9 +91,14 @@ struct MembersSheet: View {
                     displayName: profiles.displayName(for: uid),
                     initials: profiles.initials(for: uid),
                     isMe: isMe(uid),
+                    isOwner: uid == blip.ownerUid,
+                    isAdmin: blip.isAdmin(uid),
                     isBlocked: moderation.isBlocked(uid),
+                    canManageAdmin: isOwner && uid != blip.ownerUid,
                     onBlock: { Task { await runBlock(uid) } },
-                    onUnblock: { Task { await runUnblock(uid) } }
+                    onUnblock: { Task { await runUnblock(uid) } },
+                    onMakeAdmin: { Task { await runSetAdmin(uid, grant: true) } },
+                    onRemoveAdmin: { Task { await runSetAdmin(uid, grant: false) } }
                 )
                 .listRowBackground(BlipColor.surface)
                 .listRowSeparatorTint(BlipColor.surfaceElevated)
@@ -134,6 +139,11 @@ struct MembersSheet: View {
         catch { actionError = error.localizedDescription }
     }
 
+    private func runSetAdmin(_ uid: String, grant: Bool) async {
+        do { try await repo.setAdmin(blipId: blip.id, uid: uid, grant: grant); actionError = nil }
+        catch { actionError = error.localizedDescription }
+    }
+
     // MARK: - Helpers
 
     private func isMe(_ uid: String) -> Bool {
@@ -159,9 +169,14 @@ private struct MemberRow: View {
     let displayName: String?
     let initials: String
     let isMe: Bool
+    let isOwner: Bool
+    let isAdmin: Bool
     let isBlocked: Bool
+    let canManageAdmin: Bool
     let onBlock: () -> Void
     let onUnblock: () -> Void
+    let onMakeAdmin: () -> Void
+    let onRemoveAdmin: () -> Void
 
     var body: some View {
         HStack(spacing: Layout.rowSpacing) {
@@ -175,8 +190,27 @@ private struct MemberRow: View {
                 )
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(primaryLabel)
-                    .foregroundStyle(BlipColor.textPrimary)
+                HStack(spacing: 5) {
+                    Text(primaryLabel)
+                        .foregroundStyle(BlipColor.textPrimary)
+                    if isOwner {
+                        Text("owner")
+                            .font(.blip(size: 10, weight: .semibold))
+                            .foregroundStyle(BlipColor.accentNeutral)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(BlipColor.accentNeutral.opacity(0.12),
+                                        in: Capsule())
+                    } else if isAdmin {
+                        Text("admin")
+                            .font(.blip(size: 10, weight: .semibold))
+                            .foregroundStyle(BlipColor.textSecondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(BlipColor.surfaceElevated,
+                                        in: Capsule())
+                    }
+                }
                 if isBlocked {
                     Text("blocked")
                         .font(.caption)
@@ -193,6 +227,14 @@ private struct MemberRow: View {
                         .frame(minWidth: Layout.minTapTarget, minHeight: Layout.minTapTarget)
                 } else {
                     Menu {
+                        if canManageAdmin {
+                            if isAdmin {
+                                Button("remove admin", action: onRemoveAdmin)
+                            } else {
+                                Button("make admin", action: onMakeAdmin)
+                            }
+                            Divider()
+                        }
                         Button("block \(blockLabel)", role: .destructive, action: onBlock)
                     } label: {
                         Image(systemName: "ellipsis")

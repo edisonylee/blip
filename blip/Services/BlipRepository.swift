@@ -67,6 +67,7 @@ final class BlipRepository: ObservableObject, BlipRepositoryProtocol, BlipMutati
         let payload: [String: Any] = [
             "name": trimmed,
             "ownerUid": ownerUid,
+            "adminUids": [ownerUid],
             "members": [ownerUid],
             "size": size,
             "joinCode": joinCode,
@@ -79,6 +80,7 @@ final class BlipRepository: ObservableObject, BlipRepositoryProtocol, BlipMutati
             id: docRef.documentID,
             name: trimmed,
             ownerUid: ownerUid,
+            adminUids: [ownerUid],
             members: [ownerUid],
             size: size,
             joinCode: joinCode,
@@ -126,6 +128,17 @@ final class BlipRepository: ObservableObject, BlipRepositoryProtocol, BlipMutati
         return blip
     }
 
+    /// Owner-only: grant or revoke admin role for a member.
+    func setAdmin(blipId: String, uid: String, grant: Bool) async throws {
+        guard !blipId.isEmpty else { throw BlipRepoError.emptyBlipId }
+        let update = grant
+            ? FieldValue.arrayUnion([uid])
+            : FieldValue.arrayRemove([uid])
+        try await db.collection("blips").document(blipId).updateData([
+            "adminUids": update
+        ])
+    }
+
     // MARK: - Helpers
 
     private static func decode(doc: QueryDocumentSnapshot) -> Blip? {
@@ -141,10 +154,12 @@ final class BlipRepository: ObservableObject, BlipRepositoryProtocol, BlipMutati
         else { return nil }
 
         let inviteUrl = (data["inviteUrl"] as? String).flatMap(URL.init(string:))
+        let adminUids = (data["adminUids"] as? [String]) ?? [ownerUid]
         return Blip(
             id: doc.documentID,
             name: name,
             ownerUid: ownerUid,
+            adminUids: adminUids,
             members: members,
             size: size,
             joinCode: joinCode,

@@ -99,7 +99,7 @@ struct BlipDetailView: View {
                     }
                     .accessibilityLabel("share invite")
                     NavigationLink {
-                        ChatView(blipId: blip.id)
+                        ChatView(blip: blip)
                     } label: {
                         Image(systemName: "bubble.right")
                             .foregroundStyle(BlipColor.textPrimary)

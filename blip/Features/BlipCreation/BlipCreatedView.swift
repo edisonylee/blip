@@ -79,7 +79,7 @@ struct BlipCreatedView: View {
                 id: "1",
                 name: "Friend blipchat # 1 :)",
                 ownerUid: "u",
-                members: ["u"],
+                adminUids: ["u"], members: ["u"],
                 size: 4,
                 joinCode: "c9kz6il",
                 inviteUrl: nil,

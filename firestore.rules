@@ -78,8 +78,8 @@ service cloud.firestore {
                         && request.resource.data.hour >= 0
                         && request.resource.data.hour <= 23
                         && request.resource.data.durationSeconds is number
-                        && request.resource.data.durationSeconds >= 1.8
-                        && request.resource.data.durationSeconds <= 2.5;
+                        && request.resource.data.durationSeconds >= 0.5
+                        && request.resource.data.durationSeconds <= 10.0;
 
           allow update: if request.auth != null
                         && request.auth.uid == resource.data.uid

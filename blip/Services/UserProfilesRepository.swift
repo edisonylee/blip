@@ -58,6 +58,19 @@ final class UserProfilesRepository: ObservableObject {
         return name
     }
 
+    /// @handle for the uid, nil if not claimed.
+    func handle(for uid: String) -> String? {
+        profiles[uid]?.handle
+    }
+
+    /// Best short label for a chat participant: displayName → @handle → phone → "anon".
+    func chatLabel(for uid: String) -> String {
+        if let name = displayName(for: uid) { return name }
+        if let h = handle(for: uid) { return "@\(h)" }
+        if let phone = profiles[uid]?.phoneE164, !phone.isEmpty { return phone }
+        return "anon"
+    }
+
     /// First whitespace-separated token of displayName. Used for second-person prompts
     /// like "send a nudge to {firstName}?".
     func firstName(for uid: String) -> String? {

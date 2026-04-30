@@ -84,6 +84,8 @@ targets:
         product: FirebaseFunctions
       - package: Firebase
         product: FirebaseMessaging
+      - package: Firebase
+        product: FirebaseDatabase
     entitlements:
       path: blip/blip.entitlements
       properties:
