@@ -42,7 +42,7 @@ struct MembersSheet: View {
                 if let actionError {
                     Text(actionError)
                         .font(.footnote)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(BlipColor.error)
                         .padding(.horizontal, Layout.horizontalPadding)
                 }
             }
@@ -180,7 +180,7 @@ private struct MemberRow: View {
                 if isBlocked {
                     Text("blocked")
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(BlipColor.error)
                 }
             }
 

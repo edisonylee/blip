@@ -67,7 +67,7 @@ struct ReportClipSheet: View {
                 if let error {
                     Text(error)
                         .font(.footnote)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(BlipColor.error)
                 }
 
                 Button {

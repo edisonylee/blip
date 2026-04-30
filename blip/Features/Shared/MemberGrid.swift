@@ -21,7 +21,8 @@ struct MemberGridLayout {
         case 2...5:   (cols, rows) = (1, memberCapacity)
         case 6:       (cols, rows) = (2, 3)
         case 7...8:   (cols, rows) = (2, 4)
-        default:      (cols, rows) = (2, 5)  // hard cap at 10
+        case 9...10:  (cols, rows) = (2, 5)
+        default:      (cols, rows) = (3, 4)  // 11–12 → 3×4 = 12 slots max
         }
         let canvasWidth: CGFloat = 1080
         let canvasHeight: CGFloat = 1920
@@ -227,7 +228,7 @@ private struct RecordPromptSeat: View {
                 VStack(spacing: 8) {
                     Image(systemName: "camera.fill")
                         .font(.blip(size: 18, weight: .semibold))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(BlipColor.accentNeutralOn)
                         .frame(width: 38, height: 38)
                         .background(BlipColor.accent, in: Circle())
                     Text("record 2s")
@@ -282,7 +283,7 @@ private struct BlackSeat: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.black)
+                .fill(BlipColor.blackCell)
         }
         .overlay(alignment: .topLeading) {
             AvatarView(initials: initials, hasPosted: false, size: 22)

@@ -271,7 +271,7 @@ struct ExportView: View {
             Spacer()
             Image(systemName: "exclamationmark.triangle")
                 .font(.title)
-                .foregroundStyle(.red)
+                .foregroundStyle(BlipColor.error)
             Text(msg)
                 .font(BlipTypography.caption)
                 .foregroundStyle(BlipColor.textSecondary)

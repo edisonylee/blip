@@ -199,7 +199,7 @@ struct HomeView: View {
                     Text("uid \(currentUid.prefix(6))")
                     Text("blips \(repo.blips.count)")
                     if let err = repo.lastError {
-                        Text(err).foregroundStyle(.red).lineLimit(2)
+                        Text(err).foregroundStyle(BlipColor.error).lineLimit(2)
                     }
                 }
                 .font(.blip(size: 9, design: .monospaced))

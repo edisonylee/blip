@@ -72,6 +72,14 @@ enum BlipColor {
 
     // MARK: - Semantic states
 
+    /// Always-black fill for "no clip posted" cells in the member grid — matches
+    /// the stitched export pipeline's black frame for missing footage.
+    static let blackCell = Color.black
+
+    /// Fixed white overlay for text rendered on top of video content.
+    /// Not theme-adaptive — video is always dark underneath.
+    static let onMedia = Color.white
+
     /// Inline error text. Warm rose — readable on both dark and light surfaces.
     static let error = adaptive(
         dark:  0xE87070,

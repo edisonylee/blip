@@ -13,10 +13,10 @@ struct ClipTimestampLabel: View {
                 .font(BlipTypography.clipTimestamp)
             Text(parts.suffix)
                 .font(BlipTypography.clipTimestampSuffix)
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(BlipColor.onMedia.opacity(0.85))
         }
-        .foregroundStyle(.white)
-        .shadow(color: .black.opacity(0.55), radius: 8, y: 2)
+        .foregroundStyle(BlipColor.onMedia)
+        .shadow(color: BlipColor.blackCell.opacity(0.55), radius: 8, y: 2)
         .allowsHitTesting(false)
     }
 

@@ -78,28 +78,33 @@ struct BlipDetailView: View {
                         Image(systemName: "person.2")
                             .foregroundStyle(BlipColor.textPrimary)
                     }
+                    .accessibilityLabel("view members")
                     NavigationLink {
                         ArchiveView(blip: blip)
                     } label: {
                         Image(systemName: "calendar")
                             .foregroundStyle(BlipColor.textPrimary)
                     }
+                    .accessibilityLabel("archive")
                     NavigationLink {
                         ExportView(blip: blip)
                     } label: {
                         Image(systemName: "film")
                             .foregroundStyle(BlipColor.textPrimary)
                     }
+                    .accessibilityLabel("export")
                     Button { showShareSheet = true } label: {
                         Image(systemName: "square.and.arrow.up")
                             .foregroundStyle(BlipColor.textPrimary)
                     }
+                    .accessibilityLabel("share invite")
                     NavigationLink {
                         ChatView(blipId: blip.id)
                     } label: {
                         Image(systemName: "bubble.right")
                             .foregroundStyle(BlipColor.textPrimary)
                     }
+                    .accessibilityLabel("chat")
                 }
             }
         }
