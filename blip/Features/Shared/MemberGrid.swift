@@ -49,7 +49,14 @@ struct MemberGridLayout {
         var rows: [[Int]] = []
 
         if count == 1 {
-            cells.append(Cell(x: 0, y: 0, w: W, h: H))
+            // 1 person → a single 16:9 landscape cell centered vertically in
+            // the 9:16 canvas. The clip is recorded landscape; this preserves
+            // its native framing with black bars top + bottom rather than
+            // cropping to a portrait full-canvas cell.
+            let cellW = W
+            let cellH = (W * 9.0 / 16.0).rounded()
+            let yOffset = ((H - cellH) / 2).rounded()
+            cells.append(Cell(x: 0, y: yOffset, w: cellW, h: cellH))
             rows.append([0])
         } else if count <= 5 {
             let cellH = H / CGFloat(count)
@@ -73,7 +80,10 @@ struct MemberGridLayout {
                 idx += 2
             }
             if isOdd {
-                cells.append(Cell(x: 0, y: CGFloat(fullRows) * rowH, w: W, h: rowH))
+                // Lone cell is the same size as a doubled cell (half-width)
+                // and horizontally centered — black bars on either side in
+                // the export, equal flex spacers in the SwiftUI preview.
+                cells.append(Cell(x: (W - colW) / 2, y: CGFloat(fullRows) * rowH, w: colW, h: rowH))
                 rows.append([idx])
             }
         }
@@ -122,34 +132,35 @@ struct MemberGrid: View {
         let layout = MemberGridLayout.layout(for: blip.size)
         let seats = computeSeats()
 
-        // Outer aspect locks the grid box to the 9:16 export canvas. Inside,
-        // each row claims an equal share of height (.maxHeight: .infinity),
-        // and each cell within a row claims an equal share of width — so the
-        // 7-person "3 doubles + 1 lone" pattern renders the lone clip
-        // full-width naturally, with no manual GeometryReader math.
-        VStack(spacing: Self.cellSpacing) {
-            ForEach(Array(layout.rows.enumerated()), id: \.offset) { _, row in
-                HStack(spacing: Self.cellSpacing) {
-                    ForEach(row, id: \.self) { seatIdx in
-                        SeatView(
-                            seat: seats[seatIdx],
-                            onRecord: onRecord,
-                            onInvite: onInvite,
-                            isAuthor: isAuthor,
-                            onDelete: onDelete,
-                            onEditCaption: onEditCaption,
-                            onNudge: onNudge
-                        )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
+        // Each cell is positioned absolutely in canvas-pixel coordinates and
+        // scaled to the rendered container size. This handles every layout
+        // pattern uniformly — equal grid rows, the half-width centered lone
+        // cell (odd N ≥ 7), and the N=1 landscape-letterbox case — without
+        // per-pattern row math. Black canvas background fills the gaps where
+        // no cell sits, matching the server-side `pad=…:black` stitch output.
+        GeometryReader { geo in
+            let scale = geo.size.width / MemberGridLayout.canvasWidth
+            ZStack(alignment: .topLeading) {
+                BlipColor.blackCell
+                ForEach(Array(seats.enumerated()), id: \.offset) { idx, seat in
+                    let cell = layout.cells[idx]
+                    SeatView(
+                        seat: seat,
+                        onRecord: onRecord,
+                        onInvite: onInvite,
+                        isAuthor: isAuthor,
+                        onDelete: onDelete,
+                        onEditCaption: onEditCaption,
+                        onNudge: onNudge
+                    )
+                    .frame(width: cell.w * scale, height: cell.h * scale)
+                    .offset(x: cell.x * scale, y: cell.y * scale)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
         }
         .aspectRatio(MemberGridLayout.canvasAspect, contentMode: .fit)
     }
-
-    private static let cellSpacing: CGFloat = 4
 
     /// One seat per `blip.size` slot, in stable order:
     ///   1. members (in `blip.members` insertion order) → poster's clip OR a state

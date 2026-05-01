@@ -52,7 +52,12 @@ export function gridFor(count: number): GridSpec {
   }
 
   if (count === 1) {
-    cells.push({ x: 0, y: 0, w: W, h: H });
+    // 1 person → a single 16:9 landscape cell centered vertically in the
+    // 9:16 canvas; black bars top + bottom preserve the recording's native
+    // framing instead of cropping to a portrait full-canvas cell.
+    const cellH = Math.round((W * 9) / 16);
+    const yOff = Math.round((H - cellH) / 2);
+    cells.push({ x: 0, y: yOff, w: W, h: cellH });
   } else if (count <= 5) {
     const cellH = Math.floor(H / count);
     for (let i = 0; i < count; i++) {
@@ -72,7 +77,15 @@ export function gridFor(count: number): GridSpec {
       cells.push({ x: colW, y: r * rowH, w: colW, h: rowH });
     }
     if (isOdd) {
-      cells.push({ x: 0, y: fullRows * rowH, w: W, h: rowH });
+      // Lone cell is the same size as a doubled cell (half-width) and
+      // horizontally centered — `xstack=fill=black` plus the trailing
+      // `pad=` paint the leftover canvas black on either side.
+      cells.push({
+        x: Math.floor((W - colW) / 2),
+        y: fullRows * rowH,
+        w: colW,
+        h: rowH,
+      });
     }
   }
 

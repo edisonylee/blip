@@ -234,16 +234,20 @@ async function composeHour(
 ): Promise<void> {
   if (members.length === 0) throw new Error("composeHour called with no members");
 
-  // Single-member fast path: one cell, full canvas. We still bail with black if
-  // somehow called without that member's clip (defensive — caller filters this).
+  // Single-member fast path. `gridFor(1)` now returns a 16:9 landscape cell
+  // centered vertically in the 9:16 canvas, so we aspect-fill the clip into
+  // that cell and pad the rest of the canvas black. Bypasses xstack (invalid
+  // for inputs=1) but still honours the same layout math as multi-member.
   if (members.length === 1) {
     const only = clipByUid.get(members[0]);
     if (!only) throw new Error("single-member hour with no clip");
+    const cell = gridFor(1).cells[0];
     await runFFmpeg([
       "-y", "-i", only,
       "-vf",
-      `scale=${CANVAS.width}:${CANVAS.height}:force_original_aspect_ratio=increase,` +
-      `crop=${CANVAS.width}:${CANVAS.height}`,
+      `scale=${cell.w}:${cell.h}:force_original_aspect_ratio=increase,` +
+      `crop=${cell.w}:${cell.h},` +
+      `pad=${CANVAS.width}:${CANVAS.height}:${cell.x}:${cell.y}:black`,
       "-r", "30", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an",
       outPath,
     ]);
