@@ -10,7 +10,6 @@ struct HomeView: View {
     @StateObject private var clipUploader = ClipUploader()
     @State private var showPlusMenu = false
     @State private var creationDestination: CreationDestination?
-    @State private var showSettings = false
     @State private var path = NavigationPath()
     @State private var pendingCaptureBlip: Blip?
     @State private var showGlobalCapture = false
@@ -25,11 +24,15 @@ struct HomeView: View {
                 BlipColor.background.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    HomeHeader(
-                        onSettings: { showSettings = true },
-                        onPlus: { showPlusMenu = true }
-                    )
-                    .padding(.top, 8)
+                    // Home header (wordmark + plus) is blips-only chrome —
+                    // the profile tab owns its own top bar (wordmark + share +
+                    // overflow), so hide this when profile is active.
+                    if activeTab != .profile {
+                        HomeHeader(
+                            onPlus: { showPlusMenu = true }
+                        )
+                        .padding(.top, 8)
+                    }
 
                     // Two swipe pages — blips (default) and profile. Camera is
                     // a tap-to-launch button on the bottom toggle, not a page,
@@ -65,7 +68,9 @@ struct HomeView: View {
                 }
 
                 #if DEBUG
-                debugBadge
+                if activeTab != .profile {
+                    debugBadge
+                }
                 #endif
             }
             .navigationDestination(for: Blip.self) { blip in
@@ -76,9 +81,6 @@ struct HomeView: View {
                 case .create: CreateBlipView()
                 case .join: JoinBlipView()
                 }
-            }
-            .sheet(isPresented: $showSettings) {
-                SettingsView()
             }
             .sheet(isPresented: $showReferralShare) {
                 ShareSheet(activityItems: [referralShareText])
@@ -272,18 +274,10 @@ private enum CreationDestination: String, Identifiable {
 // MARK: - Header
 
 private struct HomeHeader: View {
-    let onSettings: () -> Void
     let onPlus: () -> Void
 
     var body: some View {
         HStack {
-            Button(action: onSettings) {
-                Image(systemName: "gearshape")
-                    .font(.blip(size: 20, weight: .medium))
-                    .foregroundStyle(BlipColor.textSecondary)
-                    .frame(minWidth: 44, minHeight: 44)
-            }
-            .accessibilityLabel("settings")
             Spacer()
             Button(action: onPlus) {
                 Image(systemName: "plus")

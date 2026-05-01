@@ -1,19 +1,93 @@
+import PhotosUI
 import SwiftUI
 
-/// Profile page — the rightmost of the home pager. Identity (handle, joined-N
-/// days-ago) plus stats and links into the social surfaces (friends list,
-/// leaderboard). Settings (theme / quiet hours / sign out / delete) live on
-/// the gear icon in the home header now, not here.
+/// Profile page — the rightmost of the home pager. Beli-inspired layout:
+/// wordmark + share/menu, large editable avatar, handle + member-since +
+/// school affordance, three-stat row, action buttons, and bottom rank +
+/// streak cards. All dark-mode adaptive via `BlipColor` tokens.
 struct ProfileView: View {
     @EnvironmentObject private var auth: AuthService
     @EnvironmentObject private var users: UserRepository
+    @EnvironmentObject private var userDirectory: FirestoreUserDirectory
+
+    var body: some View {
+        Group {
+            if let uid = currentUid {
+                ProfileContent(
+                    uid: uid,
+                    userMutator: users,
+                    photoUploader: ProfilePhotoUploader(),
+                    userDirectory: userDirectory
+                )
+            } else {
+                BlipColor.background.ignoresSafeArea()
+            }
+        }
+    }
+
+    private var currentUid: String? {
+        if case .signedIn(let uid) = auth.state { return uid }
+        return nil
+    }
+}
+
+// MARK: - Content (owns ViewModels + sheet plumbing)
+
+private struct ProfileContent: View {
+
+    // MARK: - Environment
+
+    @EnvironmentObject private var users: UserRepository
+
+    // MARK: - VMs
+
+    @StateObject private var vm: ProfileViewModel
+    @StateObject private var rankVM: LeaderboardViewModel
+
+    // MARK: - Local UI state
 
     @State private var showHandleSheet = false
+    @State private var showSchoolSheet = false
+    @State private var showSettings = false
+    @State private var showShareSheet = false
+    @State private var pickerItem: PhotosPickerItem?
+
+    private let uid: String
 
     // MARK: - Layout constants
 
     private static let horizontalPadding: CGFloat = 20
-    private static let sectionSpacing: CGFloat = 20
+    private static let stackSpacing: CGFloat = 24
+    private static let topBarHPadding: CGFloat = 16
+    private static let topBarIconSize: CGFloat = 18
+    private static let topBarTapTarget: CGFloat = 44
+    private static let wordmarkSize: CGFloat = 22
+    private static let wordmarkTracking: CGFloat = -0.4
+    private static let avatarSize: CGFloat = 120
+    private static let handleSize: CGFloat = 22
+    private static let handleTracking: CGFloat = -0.3
+    private static let metaSize: CGFloat = 13
+    private static let actionRowSpacing: CGFloat = 8
+    private static let bottomCardSpacing: CGFloat = 10
+    private static let overflowSize: CGFloat = 52
+    private static let rankFriendsThreshold: Int = 3
+
+    // MARK: - Init
+
+    init(
+        uid: String,
+        userMutator: any BlipUserMutating,
+        photoUploader: any ProfilePhotoUploading,
+        userDirectory: any UserRanking
+    ) {
+        self.uid = uid
+        _vm = StateObject(wrappedValue: ProfileViewModel(
+            uid: uid,
+            userMutator: userMutator,
+            photoUploader: photoUploader
+        ))
+        _rankVM = StateObject(wrappedValue: LeaderboardViewModel(userDirectory: userDirectory))
+    }
 
     // MARK: - Body
 
@@ -21,180 +95,268 @@ struct ProfileView: View {
         ZStack {
             BlipColor.background.ignoresSafeArea()
 
-            ScrollView {
-                VStack(spacing: Self.sectionSpacing) {
-                    ProfileStatsHero(
-                        profile: users.profile,
-                        onTapHandle: { showHandleSheet = true }
-                    )
+            VStack(spacing: 0) {
+                topBar
+                ScrollView {
+                    VStack(spacing: Self.stackSpacing) {
+                        identityBlock
+                        statsRow
+                        actionRow
+                        bottomCardsRow
+
+                        if let err = vm.pendingError {
+                            Text(err)
+                                .font(BlipTypography.caption)
+                                .foregroundStyle(BlipColor.error)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, Self.horizontalPadding)
+                        }
+                    }
                     .padding(.horizontal, Self.horizontalPadding)
-                    .padding(.top, 8)
-
-                    socialLinks
-                        .padding(.horizontal, Self.horizontalPadding)
+                    .padding(.top, 12)
+                    .padding(.bottom, Self.stackSpacing)
                 }
-                .padding(.bottom, Self.sectionSpacing)
             }
         }
-        .sheet(isPresented: $showHandleSheet) {
-            EditHandleSheet()
+        .task { rankVM.startListening() }
+        .onDisappear { rankVM.stopListening() }
+        .sheet(isPresented: $showHandleSheet) { EditHandleSheet() }
+        .sheet(isPresented: $showSchoolSheet) { EditSchoolSheet() }
+        .sheet(isPresented: $showSettings) { SettingsView() }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(activityItems: vm.shareItems(handle: profile?.handle))
+        }
+        .onChange(of: pickerItem) { _, newItem in
+            guard let newItem else { return }
+            Task {
+                if let data = try? await newItem.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    await vm.uploadPhoto(image)
+                }
+                pickerItem = nil
+            }
         }
     }
 
-    // MARK: - Subviews
+    // MARK: - Top bar
 
-    private var socialLinks: some View {
-        VStack(spacing: 0) {
-            NavigationLink {
-                FriendsView()
-            } label: {
-                BlipLinkRow(title: "Friends", value: friendsCountLabel)
+    private var topBar: some View {
+        HStack {
+            Text(wordmarkText)
+                .font(.blip(size: Self.wordmarkSize, weight: .bold))
+                .tracking(Self.wordmarkTracking)
+                .foregroundStyle(BlipColor.textPrimary)
+                .lineLimit(1)
+            Spacer()
+            Button { showShareSheet = true } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.blip(size: Self.topBarIconSize, weight: .medium))
+                    .foregroundStyle(BlipColor.textPrimary)
+                    .frame(minWidth: Self.topBarTapTarget, minHeight: Self.topBarTapTarget)
             }
-            .buttonStyle(.plain)
+            .accessibilityLabel("share profile")
 
-            Divider().background(BlipColor.surfaceElevated)
-
-            NavigationLink {
-                LeaderboardView()
-            } label: {
-                BlipLinkRow(title: "Leaderboard")
+            Button { showSettings = true } label: {
+                Image(systemName: "line.3.horizontal")
+                    .font(.blip(size: Self.topBarIconSize, weight: .medium))
+                    .foregroundStyle(BlipColor.textPrimary)
+                    .frame(minWidth: Self.topBarTapTarget, minHeight: Self.topBarTapTarget)
             }
-            .buttonStyle(.plain)
+            .accessibilityLabel("settings")
         }
-        .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, Self.topBarHPadding)
     }
 
-    // MARK: - Helpers
+    // MARK: - Identity block (avatar + handle + meta)
 
-    private var friendsCountLabel: String? {
-        guard let count = users.profile?.friendsCount, count > 0 else { return nil }
-        return count == 1 ? "1" : "\(count)"
-    }
-}
-
-// MARK: - Stats hero
-
-/// Top-of-screen hero for the own-profile screen. Shows the user's @handle
-/// (or a "claim a handle" affordance when unset), how long they've been on
-/// blip, and three stat tiles: total clips, current streak, friends.
-private struct ProfileStatsHero: View {
-    let profile: BlipUser?
-    let onTapHandle: () -> Void
-
-    // MARK: - Layout constants
-
-    private static let stackSpacing: CGFloat = 16
-    private static let tileSpacing: CGFloat = 8
-    private static let cornerRadius: CGFloat = 12
-    private static let contentPadding: CGFloat = 16
-    private static let handleRowMinHeight: CGFloat = 44
-    private static let handleSize: CGFloat = 28
-    private static let handleTracking: CGFloat = -0.3
-    private static let handleRowHSpacing: CGFloat = 8
-
-    // MARK: - Body
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Self.stackSpacing) {
-            handleRow
+    private var identityBlock: some View {
+        VStack(spacing: 12) {
+            avatarPicker
+            handleLabel
             memberSinceLabel
-            statTilesRow
-            if let profile, profile.referralsCount > 0 || profile.unlockedBlipSlots == 1 {
-                Text(referralProgressLabel)
-                    .font(BlipTypography.caption)
-                    .foregroundStyle(BlipColor.textTertiary)
-            }
+            schoolAffordance
         }
-        .padding(Self.contentPadding)
-        .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
-                .stroke(BlipColor.border, lineWidth: 1)
-        )
+        .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Subviews
-
-    private var handleRow: some View {
-        Button(action: onTapHandle) {
-            HStack(spacing: Self.handleRowHSpacing) {
-                Text(handleDisplay)
-                    .font(.blip(size: Self.handleSize, weight: .semibold))
-                    .tracking(Self.handleTracking)
-                    .foregroundStyle(handleTint)
-                Spacer()
-                Text(profile?.handle == nil ? "Claim" : "Edit")
-                    .font(BlipTypography.caption)
-                    .foregroundStyle(BlipColor.textTertiary)
+    private var avatarPicker: some View {
+        PhotosPicker(selection: $pickerItem, matching: .images, photoLibrary: .shared()) {
+            ZStack {
+                ProfileAvatarView(
+                    photoURL: profile?.photoURL,
+                    initials: avatarInitials,
+                    size: Self.avatarSize,
+                    isEditable: true
+                )
+                if vm.isUploadingPhoto {
+                    Circle()
+                        .fill(BlipColor.background.opacity(0.55))
+                        .frame(width: Self.avatarSize, height: Self.avatarSize)
+                    ProgressView().tint(BlipColor.textPrimary)
+                }
             }
-            .frame(minHeight: Self.handleRowMinHeight)
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("change profile photo")
+        .disabled(vm.isUploadingPhoto)
+    }
+
+    private var handleLabel: some View {
+        Button { showHandleSheet = true } label: {
+            Text(handleDisplay)
+                .font(.blip(size: Self.handleSize, weight: .semibold))
+                .tracking(Self.handleTracking)
+                .foregroundStyle(profile?.handle == nil ? BlipColor.textSecondary : BlipColor.textPrimary)
+                .frame(minHeight: Self.topBarTapTarget)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(profile?.handle == nil ? "claim a handle" : "edit handle")
     }
 
     private var memberSinceLabel: some View {
         Text(memberSinceText)
-            .font(BlipTypography.caption)
+            .font(.blip(size: Self.metaSize))
             .foregroundStyle(BlipColor.textSecondary)
     }
 
-    private var statTilesRow: some View {
-        HStack(spacing: Self.tileSpacing) {
-            BlipStatTile(value: "\(profile?.totalClips ?? 0)", label: clipsLabel)
-            BlipStatTile(value: "\(profile?.streakCurrent ?? 0)", label: "day streak")
-            BlipStatTile(value: "\(profile?.friendsCount ?? 0)", label: friendsLabel)
-            BlipStatTile(value: "\(profile?.referralsCount ?? 0)", label: referralsLabel)
+    private var schoolAffordance: some View {
+        Button { showSchoolSheet = true } label: {
+            HStack(spacing: 4) {
+                if profile?.school == nil {
+                    Image(systemName: "plus")
+                        .font(.system(size: Self.metaSize - 1, weight: .semibold))
+                }
+                Text(schoolText)
+            }
+            .font(.blip(size: Self.metaSize, weight: profile?.school == nil ? .medium : .regular))
+            .foregroundStyle(profile?.school == nil ? BlipColor.accent : BlipColor.textPrimary)
+            .frame(minHeight: Self.topBarTapTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(profile?.school == nil ? "add your school" : "edit your school")
+    }
+
+    // MARK: - Stats row
+
+    private var statsRow: some View {
+        HStack(spacing: 8) {
+            BlipStatTile(value: "\(followersCount)", label: "followers")
+            BlipStatTile(value: "\(followingCount)", label: "following")
+            BlipStatTile(value: "\(likesCount)", label: "likes")
         }
     }
 
-    private var referralProgressLabel: String {
-        guard let profile else { return "" }
-        let need = profile.referralsToNextSlot
-        return need == 1
-            ? "1 more referral unlocks another blip slot"
-            : "\(need) more referrals unlock another blip slot"
+    // MARK: - Action row
+
+    private var actionRow: some View {
+        HStack(spacing: Self.actionRowSpacing) {
+            Button("Edit profile") { showHandleSheet = true }
+                .blipSecondary()
+
+            Button("Share profile") { showShareSheet = true }
+                .blipSecondary()
+
+            Button { showSettings = true } label: {
+                Image(systemName: "chevron.down")
+                    .font(.blip(size: 14, weight: .semibold))
+                    .foregroundStyle(BlipColor.textPrimary)
+                    .frame(width: Self.overflowSize, height: Self.overflowSize)
+                    .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(BlipColor.border, lineWidth: 1)
+                    )
+            }
+            .accessibilityLabel("more options")
+        }
+    }
+
+    // MARK: - Bottom cards
+
+    private var bottomCardsRow: some View {
+        HStack(spacing: Self.bottomCardSpacing) {
+            BlipBottomCard(
+                icon: "trophy.fill",
+                label: "Rank on Blip",
+                value: rankValue,
+                isLocked: isRankLocked
+            )
+            BlipBottomCard(
+                icon: "flame.fill",
+                label: "Current Streak",
+                value: streakValue
+            )
+        }
     }
 
     // MARK: - Helpers
 
-    private var handleDisplay: String {
-        if let h = profile?.handle, !h.isEmpty { return "@\(h)" }
-        return "Claim a handle"
+    private var profile: BlipUser? { users.profile }
+
+    private var wordmarkText: String {
+        if let h = profile?.handle, !h.isEmpty { return h }
+        return "blip"
     }
 
-    private var handleTint: Color {
-        profile?.handle == nil ? BlipColor.textSecondary : BlipColor.textPrimary
+    private var avatarInitials: String {
+        if let h = profile?.handle, let first = h.first { return String(first).uppercased() }
+        return "?"
+    }
+
+    private var handleDisplay: String {
+        if let h = profile?.handle, !h.isEmpty { return "@\(h)" }
+        return "claim a handle"
     }
 
     private var memberSinceText: String {
         guard let createdAt = profile?.createdAt else { return "joined recently" }
-        let days = daysBetween(createdAt, and: Date())
-        if days <= 0 { return "joined today" }
-        if days == 1 { return "joined 1 day ago" }
-        return "joined \(days) days ago"
+        return "Member since \(monthYear(createdAt))"
     }
 
-    private var clipsLabel: String {
-        let n = profile?.totalClips ?? 0
-        return n == 1 ? "clip" : "clips"
+    private func monthYear(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: date)
     }
 
-    private var friendsLabel: String {
-        let n = profile?.friendsCount ?? 0
-        return n == 1 ? "friend" : "friends"
+    private var schoolText: String {
+        profile?.school ?? "Add school"
     }
 
-    private var referralsLabel: String {
-        let n = profile?.referralsCount ?? 0
-        return n == 1 ? "invite" : "invites"
+    /// Until the real follow graph ships, both followers and following are
+    /// surfaced from `friendsCount` (friendship is symmetric today, so each
+    /// friend mutually counts as both). When Cloud Functions start writing
+    /// `followersCount` / `followingCount` separately, prefer those.
+    private var followersCount: Int {
+        let stored = profile?.followersCount ?? 0
+        return stored > 0 ? stored : (profile?.friendsCount ?? 0)
     }
 
-    private func daysBetween(_ a: Date, and b: Date) -> Int {
-        let cal = Calendar.current
-        let start = cal.startOfDay(for: a)
-        let end = cal.startOfDay(for: b)
-        return cal.dateComponents([.day], from: start, to: end).day ?? 0
+    private var followingCount: Int {
+        let stored = profile?.followingCount ?? 0
+        return stored > 0 ? stored : (profile?.friendsCount ?? 0)
+    }
+
+    private var likesCount: Int { profile?.likesCount ?? 0 }
+
+    private var streakValue: String {
+        let n = profile?.streakCurrent ?? 0
+        return n == 1 ? "1 day" : "\(n) days"
+    }
+
+    private var isRankLocked: Bool {
+        (profile?.friendsCount ?? 0) < Self.rankFriendsThreshold
+    }
+
+    /// Reads the signed-in user's rank out of the live top-50 leaderboard.
+    /// Returns `"—"` when the user is outside the top 50 (the leaderboard
+    /// listener is bounded for cost reasons).
+    private var rankValue: String? {
+        if let entry = rankVM.entries.first(where: { $0.id == uid }) {
+            return "#\(entry.rank)"
+        }
+        return rankVM.entries.isEmpty ? nil : "—"
     }
 }
-

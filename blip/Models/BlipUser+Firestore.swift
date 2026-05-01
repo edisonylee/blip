@@ -23,6 +23,10 @@ extension BlipUser {
         let streakBest = data["streakBest"] as? Int ?? 0
         let lastClipDay = data["lastClipDay"] as? String
         let friendsCount = data["friendsCount"] as? Int ?? 0
+        let followersCount = data["followersCount"] as? Int ?? 0
+        let followingCount = data["followingCount"] as? Int ?? 0
+        let likesCount = data["likesCount"] as? Int ?? 0
+        let school = data["school"] as? String
         let referralsCount = data["referralsCount"] as? Int ?? 0
         let referredByUid = data["referredByUid"] as? String
 
@@ -44,6 +48,10 @@ extension BlipUser {
             streakBest: streakBest,
             lastClipDay: lastClipDay,
             friendsCount: friendsCount,
+            followersCount: followersCount,
+            followingCount: followingCount,
+            likesCount: likesCount,
+            school: school,
             referralsCount: referralsCount,
             referredByUid: referredByUid
         )

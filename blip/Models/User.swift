@@ -30,6 +30,20 @@ struct BlipUser: Codable, Identifiable, Hashable {
     var lastClipDay: String?
     var friendsCount: Int = 0
 
+    // Forward-compat for the planned follow-graph + likes features. Until those
+    // ship, `followersCount` / `followingCount` are surfaced on the profile via
+    // `friendsCount` (friendship is symmetric today, so each friend mutually
+    // counts as both follower and following), and `likesCount` renders as 0.
+    // No Cloud Function writes these yet — the field exists so the next rev of
+    // the social graph can fill them in without a migration.
+    var followersCount: Int = 0
+    var followingCount: Int = 0
+    var likesCount: Int = 0
+
+    // Optional profile fields editable by the user.
+    /// Free-form school name — surfaced under the @handle on the profile screen.
+    var school: String?
+
     // Referrals — written by the `onUserCreated` Cloud Function trigger.
     // Each new uid that signs up via this user's invite link increments the
     // referrer's count by 1 (idempotent: doc-create only fires once per uid).

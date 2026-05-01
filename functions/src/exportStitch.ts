@@ -255,20 +255,23 @@ async function composeHour(
   const filterParts: string[] = [];
 
   members.forEach((uid, i) => {
+    // Each seat is scaled to its own cell rect — the lone full-width row
+    // (odd counts ≥ 7) needs a wider scale than the doubled rows above it.
+    const cell = grid.cells[i];
     const clipPath = clipByUid.get(uid);
     if (clipPath) {
       args.push("-i", clipPath);
     } else {
-      // lavfi black source matching cell dimensions/duration so xstack timing aligns.
+      // lavfi black source sized to this cell so xstack timing/dims align.
       args.push(
         "-f", "lavfi",
         "-t", String(CLIP_DURATION_SEC),
-        "-i", `color=c=black:s=${grid.cellWidth}x${grid.cellHeight}:r=30`,
+        "-i", `color=c=black:s=${cell.w}x${cell.h}:r=30`,
       );
     }
     filterParts.push(
-      `[${i}:v]scale=${grid.cellWidth}:${grid.cellHeight}:force_original_aspect_ratio=increase,` +
-      `crop=${grid.cellWidth}:${grid.cellHeight},setpts=PTS-STARTPTS[v${i}]`
+      `[${i}:v]scale=${cell.w}:${cell.h}:force_original_aspect_ratio=increase,` +
+      `crop=${cell.w}:${cell.h},setpts=PTS-STARTPTS[v${i}]`
     );
   });
 

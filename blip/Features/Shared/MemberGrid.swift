@@ -5,30 +5,80 @@ import SwiftUI
 
 /// Cell layout derived from `blip.size`, matching the export pipeline so the
 /// in-app preview is positionally faithful to the stitched output.
-/// Once the group is full, every seat in the preview is also a seat in the export.
+///
+///   1     -> 1 row, 1 cell (full canvas)
+///   2..5  -> N rows × 1 col (landscape clips fill full-width rows)
+///   6     -> 3 rows × 2 cols
+///   7     -> 3 doubled rows + 1 lone full-width row    (4 rows total)
+///   8     -> 4 rows × 2 cols
+///   9     -> 4 doubled rows + 1 lone full-width row    (5 rows total)
+///  10     -> 5 rows × 2 cols
+///  11     -> 5 doubled rows + 1 lone full-width row    (6 rows total)
+///  12     -> 6 rows × 2 cols                            (12 = hard cap)
+///
+/// Every row has equal height; columns split each row's width evenly. The
+/// "lone row" pattern handles odd member counts ≥ 7 — the last person gets a
+/// full-width row instead of leaving a blank cell. Mirrors
+/// `functions/src/utils/gridLayout.ts` — keep both in sync so preview ==
+/// export.
 struct MemberGridLayout {
-    let cols: Int
-    let rows: Int
-    let cellAspect: CGFloat  // width / height — matches export cell pixel ratio
+    /// Per-seat rectangles in canvas (1080×1920) pixel coords. Index = seat
+    /// order, so `cells[i]` is the rect for the i-th member in `blip.members`.
+    let cells: [Cell]
+    /// Row decomposition for view rendering: each row is the list of seat
+    /// indices it contains, left-to-right. All rows have equal height.
+    let rows: [[Int]]
+
+    static let canvasWidth: CGFloat = 1080
+    static let canvasHeight: CGFloat = 1920
+    static let canvasAspect: CGFloat = canvasWidth / canvasHeight
+
+    struct Cell: Equatable {
+        let x: CGFloat
+        let y: CGFloat
+        let w: CGFloat
+        let h: CGFloat
+    }
 
     static func layout(for memberCapacity: Int) -> MemberGridLayout {
-        // Stay single-column up to 5 so landscape clips fill full-width rows.
-        // Past 5, fall to two columns. Mirrors functions/src/utils/gridLayout.ts —
-        // keep both in sync so preview == export.
-        let (cols, rows): (Int, Int)
-        switch memberCapacity {
-        case ...1:    (cols, rows) = (1, 1)
-        case 2...5:   (cols, rows) = (1, memberCapacity)
-        case 6:       (cols, rows) = (2, 3)
-        case 7...8:   (cols, rows) = (2, 4)
-        case 9...10:  (cols, rows) = (2, 5)
-        default:      (cols, rows) = (3, 4)  // 11–12 → 3×4 = 12 slots max
+        let count = max(1, memberCapacity)
+        let W = canvasWidth
+        let H = canvasHeight
+
+        var cells: [Cell] = []
+        var rows: [[Int]] = []
+
+        if count == 1 {
+            cells.append(Cell(x: 0, y: 0, w: W, h: H))
+            rows.append([0])
+        } else if count <= 5 {
+            let cellH = H / CGFloat(count)
+            for i in 0..<count {
+                cells.append(Cell(x: 0, y: CGFloat(i) * cellH, w: W, h: cellH))
+                rows.append([i])
+            }
+        } else {
+            // 6+: two columns, with an optional lone full-width row at the
+            // bottom when the member count is odd.
+            let isOdd = count % 2 != 0
+            let fullRows = isOdd ? (count - 1) / 2 : count / 2
+            let totalRows = isOdd ? fullRows + 1 : fullRows
+            let rowH = H / CGFloat(totalRows)
+            let colW = W / 2
+            var idx = 0
+            for r in 0..<fullRows {
+                cells.append(Cell(x: 0, y: CGFloat(r) * rowH, w: colW, h: rowH))
+                cells.append(Cell(x: colW, y: CGFloat(r) * rowH, w: colW, h: rowH))
+                rows.append([idx, idx + 1])
+                idx += 2
+            }
+            if isOdd {
+                cells.append(Cell(x: 0, y: CGFloat(fullRows) * rowH, w: W, h: rowH))
+                rows.append([idx])
+            }
         }
-        let canvasWidth: CGFloat = 1080
-        let canvasHeight: CGFloat = 1920
-        let cellW = canvasWidth / CGFloat(cols)
-        let cellH = canvasHeight / CGFloat(rows)
-        return MemberGridLayout(cols: cols, rows: rows, cellAspect: cellW / cellH)
+
+        return MemberGridLayout(cells: cells, rows: rows)
     }
 }
 
@@ -72,27 +122,34 @@ struct MemberGrid: View {
         let layout = MemberGridLayout.layout(for: blip.size)
         let seats = computeSeats()
 
-        LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: layout.cols),
-            spacing: 4
-        ) {
-            // Index-based ids: seat positions are stable per blip.size, so this
-            // lets SwiftUI update existing cells in-place instead of tearing down
-            // the AVPlayer-backed video cells on every state change.
-            ForEach(Array(seats.enumerated()), id: \.offset) { _, seat in
-                SeatView(
-                    seat: seat,
-                    cellAspect: layout.cellAspect,
-                    onRecord: onRecord,
-                    onInvite: onInvite,
-                    isAuthor: isAuthor,
-                    onDelete: onDelete,
-                    onEditCaption: onEditCaption,
-                    onNudge: onNudge
-                )
+        // Outer aspect locks the grid box to the 9:16 export canvas. Inside,
+        // each row claims an equal share of height (.maxHeight: .infinity),
+        // and each cell within a row claims an equal share of width — so the
+        // 7-person "3 doubles + 1 lone" pattern renders the lone clip
+        // full-width naturally, with no manual GeometryReader math.
+        VStack(spacing: Self.cellSpacing) {
+            ForEach(Array(layout.rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: Self.cellSpacing) {
+                    ForEach(row, id: \.self) { seatIdx in
+                        SeatView(
+                            seat: seats[seatIdx],
+                            onRecord: onRecord,
+                            onInvite: onInvite,
+                            isAuthor: isAuthor,
+                            onDelete: onDelete,
+                            onEditCaption: onEditCaption,
+                            onNudge: onNudge
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .aspectRatio(MemberGridLayout.canvasAspect, contentMode: .fit)
     }
+
+    private static let cellSpacing: CGFloat = 4
 
     /// One seat per `blip.size` slot, in stable order:
     ///   1. members (in `blip.members` insertion order) → poster's clip OR a state
@@ -138,7 +195,6 @@ struct MemberGrid: View {
 
 private struct SeatView: View {
     let seat: Seat
-    let cellAspect: CGFloat
     let onRecord: () -> Void
     let onInvite: () -> Void
     let isAuthor: (BlipClip) -> Bool
@@ -179,7 +235,6 @@ private struct SeatView: View {
                 InviteSeat(onInvite: onInvite)
             }
         }
-        .aspectRatio(cellAspect, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }

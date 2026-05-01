@@ -1,26 +1,41 @@
 /**
- * Per-hour grid layout. Up to 5 members the grid stays single-column so each
- * landscape clip gets a full-width row (looks much better than cramming
- * landscape footage into square cells). Past 5 it splits into two columns.
+ * Per-hour grid layout. Mirrors `blip/Features/Shared/MemberGrid.swift` —
+ * keep both in sync so the in-app preview matches the stitched export.
  *
- *   1    -> 1×1 (full canvas)
- *   2    -> 1×2
- *   3    -> 1×3
- *   4    -> 1×4
- *   5    -> 1×5
- *   6    -> 2×3
- *   7-8  -> 2×4
- *   9-10 -> 2×5  (hard cap at 10 members per blip)
+ * Capture is landscape (CaptureSession sets videoRotationAngle = 0), so
+ * landscape clips fit cleanly into the wide 1-col rows. For 6+ members we
+ * split into two columns; odd member counts get a single full-width "lone"
+ * row at the bottom rather than leaving a blank cell in a 2-col row.
  *
- * Inputs are pre-scaled to cellWidth × cellHeight before xstack, so positions
- * are literal pixel offsets (no `w0/h0` variables needed).
+ *   1     -> 1×1 full canvas
+ *   2..5  -> 1 col × N rows
+ *   6     -> 2 cols × 3 rows
+ *   7     -> 3 doubled rows + 1 lone full-width row
+ *   8     -> 2 cols × 4 rows
+ *   9     -> 4 doubled rows + 1 lone full-width row
+ *  10     -> 2 cols × 5 rows
+ *  11     -> 5 doubled rows + 1 lone full-width row
+ *  12     -> 2 cols × 6 rows                            (12 = hard cap)
+ *
+ * Each input is scaled to its own cell size before xstack — see
+ * `composeHour` in exportStitch.ts. Cells with a different aspect than the
+ * source clip use `force_original_aspect_ratio=increase + crop` (aspect-fill).
  */
+export interface GridCell {
+  /** Top-left x in canvas pixel coords. */
+  x: number;
+  /** Top-left y in canvas pixel coords. */
+  y: number;
+  /** Cell width in pixels. */
+  w: number;
+  /** Cell height in pixels. */
+  h: number;
+}
+
 export interface GridSpec {
-  cols: number;
-  rows: number;
-  cellWidth: number;
-  cellHeight: number;
-  /** Literal pixel positions, "x_y|x_y|...", one entry per cell. */
+  /** Per-seat rectangle. `cells.length === count`. */
+  cells: GridCell[];
+  /** Comma-free pipe-separated `x_y` positions for the ffmpeg `xstack=layout=` arg. */
   xstackLayout: string;
 }
 
@@ -28,30 +43,41 @@ const CANVAS_WIDTH = 1080;
 const CANVAS_HEIGHT = 1920;
 
 export function gridFor(count: number): GridSpec {
-  let cols: number;
-  let rows: number;
-  if (count <= 1)      { cols = 1; rows = 1; }
-  else if (count <= 5) { cols = 1; rows = count; }
-  else if (count === 6) { cols = 2; rows = 3; }
-  else if (count <= 8) { cols = 2; rows = 4; }
-  else                 { cols = 2; rows = 5; }
+  const W = CANVAS_WIDTH;
+  const H = CANVAS_HEIGHT;
+  const cells: GridCell[] = [];
 
-  const cellWidth = Math.floor(CANVAS_WIDTH / cols);
-  const cellHeight = Math.floor(CANVAS_HEIGHT / rows);
-
-  const positions: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const r = Math.floor(i / cols);
-    const c = i % cols;
-    positions.push(`${c * cellWidth}_${r * cellHeight}`);
+  if (count <= 0) {
+    return { cells, xstackLayout: "" };
   }
-  return {
-    cols,
-    rows,
-    cellWidth,
-    cellHeight,
-    xstackLayout: positions.join("|"),
-  };
+
+  if (count === 1) {
+    cells.push({ x: 0, y: 0, w: W, h: H });
+  } else if (count <= 5) {
+    const cellH = Math.floor(H / count);
+    for (let i = 0; i < count; i++) {
+      cells.push({ x: 0, y: i * cellH, w: W, h: cellH });
+    }
+  } else {
+    // 6+: two columns, with an optional lone full-width row at the bottom
+    // when the count is odd.
+    const isOdd = count % 2 !== 0;
+    const fullRows = isOdd ? (count - 1) / 2 : count / 2;
+    const totalRows = isOdd ? fullRows + 1 : fullRows;
+    const rowH = Math.floor(H / totalRows);
+    const colW = Math.floor(W / 2);
+
+    for (let r = 0; r < fullRows; r++) {
+      cells.push({ x: 0,    y: r * rowH, w: colW, h: rowH });
+      cells.push({ x: colW, y: r * rowH, w: colW, h: rowH });
+    }
+    if (isOdd) {
+      cells.push({ x: 0, y: fullRows * rowH, w: W, h: rowH });
+    }
+  }
+
+  const xstackLayout = cells.map((c) => `${c.x}_${c.y}`).join("|");
+  return { cells, xstackLayout };
 }
 
 export const CANVAS = { width: CANVAS_WIDTH, height: CANVAS_HEIGHT };
