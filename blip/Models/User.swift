@@ -30,14 +30,8 @@ struct BlipUser: Codable, Identifiable, Hashable {
     var lastClipDay: String?
     var friendsCount: Int = 0
 
-    // Forward-compat for the planned follow-graph + likes features. Until those
-    // ship, `followersCount` / `followingCount` are surfaced on the profile via
-    // `friendsCount` (friendship is symmetric today, so each friend mutually
-    // counts as both follower and following), and `likesCount` renders as 0.
-    // No Cloud Function writes these yet — the field exists so the next rev of
-    // the social graph can fill them in without a migration.
-    var followersCount: Int = 0
-    var followingCount: Int = 0
+    /// Total likes across all stitched days the user owns. Written by the
+    /// `onDayLike` Cloud Function (admin SDK; client treats as read-only).
     var likesCount: Int = 0
 
     // Optional profile fields editable by the user.

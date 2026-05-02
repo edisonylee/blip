@@ -402,19 +402,24 @@ private struct InviteSeat: View {
 // MARK: - Auto-loop player
 
 /// Auto-loop video preview for a posted clip. Mutes audio so the grid doesn't blare.
-/// Coordinator owns the loop observer and pauses/tears down the player on dismantle
-/// so off-screen cells don't keep decoding.
+/// Uses `AVPlayerLooper` + `AVQueuePlayer` (Apple-recommended pattern) — the
+/// looper handles seek timing and end-of-content edge cases that the older
+/// notification-based loop hit on iOS 26 + audio-session changes.
 private struct ClipPlayerView: UIViewControllerRepresentable {
     let url: URL
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let player = AVPlayer(url: url)
-        player.isMuted = true
-        player.actionAtItemEnd = .none
+        let item = AVPlayerItem(url: url)
+        let queuePlayer = AVQueuePlayer()
+        queuePlayer.isMuted = true
+        let looper = AVPlayerLooper(player: queuePlayer, templateItem: item)
+        context.coordinator.queuePlayer = queuePlayer
+        context.coordinator.looper = looper
+
         let vc = AVPlayerViewController()
-        vc.player = player
+        vc.player = queuePlayer
         vc.showsPlaybackControls = false
         vc.videoGravity = .resizeAspectFill
         // AVPlayerViewController's view defaults to opaque black, which bleeds
@@ -422,8 +427,7 @@ private struct ClipPlayerView: UIViewControllerRepresentable {
         // backgrounds lets the SwiftUI clipShape do its job cleanly.
         vc.view.backgroundColor = .clear
         vc.contentOverlayView?.backgroundColor = .clear
-        context.coordinator.attach(player: player)
-        player.play()
+        queuePlayer.play()
         return vc
     }
 
@@ -431,32 +435,18 @@ private struct ClipPlayerView: UIViewControllerRepresentable {
 
     static func dismantleUIViewController(_ uiViewController: AVPlayerViewController, coordinator: Coordinator) {
         coordinator.tearDown()
-        uiViewController.player?.pause()
         uiViewController.player = nil
     }
 
     final class Coordinator {
-        private var loopToken: NSObjectProtocol?
-        private weak var player: AVPlayer?
-
-        func attach(player: AVPlayer) {
-            self.player = player
-            loopToken = NotificationCenter.default.addObserver(
-                forName: .AVPlayerItemDidPlayToEndTime,
-                object: player.currentItem,
-                queue: .main
-            ) { [weak player] _ in
-                player?.seek(to: .zero)
-                player?.play()
-            }
-        }
+        var queuePlayer: AVQueuePlayer?
+        var looper: AVPlayerLooper?
 
         func tearDown() {
-            if let token = loopToken {
-                NotificationCenter.default.removeObserver(token)
-                loopToken = nil
-            }
-            player?.pause()
+            queuePlayer?.pause()
+            looper?.disableLooping()
+            looper = nil
+            queuePlayer = nil
         }
 
         deinit { tearDown() }

@@ -75,6 +75,16 @@ struct ReviewView: View {
         .toolbarBackground(BlipColor.background, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .navigationBarBackButtonHidden(true)
+        .onAppear {
+            // The captured clip is landscape; re-assert the lock so playback fills
+            // the screen. CaptureView (still in the nav stack underneath) is the
+            // canonical lock owner — its onDisappear releases the lock back to
+            // portrait when the whole capture flow tears down.
+            AppDelegate.lockedOrientation = .landscape
+            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
+            }
+        }
     }
 
     private var clipPreview: some View {

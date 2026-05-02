@@ -17,6 +17,7 @@ struct ExportView: View {
     @EnvironmentObject private var moderation: ModerationService
     @StateObject private var service = ExportService()
     @StateObject private var clips = ClipsRepository()
+    @StateObject private var likes = DayLikesRepository()
 
     @State private var showShare = false
     /// MP4 downloaded from the stitched URL into the app's tmp directory. We
@@ -175,9 +176,17 @@ struct ExportView: View {
                     Text("·")
                     Text("preparing…")
                 }
+                Spacer()
+                HeartButton(
+                    liked: likes.liked,
+                    count: likes.count,
+                    isWriting: likes.isWriting,
+                    onTap: { Task { await likes.toggle() } }
+                )
             }
             .font(BlipTypography.caption)
             .foregroundStyle(BlipColor.textTertiary)
+            .padding(.horizontal, 16)
 
             HStack(spacing: 10) {
                 shareButton
@@ -190,6 +199,7 @@ struct ExportView: View {
             .padding(.bottom, 24)
         }
         .task(id: url) { await downloadForSharing(remoteURL: url) }
+        .task(id: dateKey) { likes.startListening(blipId: blip.id, dateKey: dateKey) }
         .sheet(isPresented: $showShare) {
             // Always pass the local file when we have it — that's what unlocks
             // Save Video / TikTok / etc. Fall back to the remote URL only if

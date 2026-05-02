@@ -17,3 +17,4 @@ export { onNudgeCreated } from "./onNudge";
 export { onClipCreatedUpdateStats, onFriendshipChangeUpdateCount } from "./userStats";
 export { onUserCreated } from "./onUserCreated";
 export { claimReferral } from "./claimReferral";
+export { onDayLike } from "./onDayLike";

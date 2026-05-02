@@ -23,7 +23,7 @@ service cloud.firestore {
       allow update: if request.auth != null
                     && request.auth.uid == uid
                     && !request.resource.data.diff(resource.data).affectedKeys()
-                       .hasAny(['totalClips','streakCurrent','streakBest','lastClipDay','friendsCount','referralsCount','referredByUid']);
+                       .hasAny(['totalClips','streakCurrent','streakBest','lastClipDay','friendsCount','likesCount','referralsCount','referredByUid']);
       allow delete: if false;
     }
 
@@ -66,6 +66,25 @@ service cloud.firestore {
         allow read: if request.auth != null
                     && request.auth.uid in get(/databases/$(database)/documents/blips/$(blipId)).data.members;
         allow write: if false;
+
+        // Likes on a stitched day. Doc id is the liker's uid → idempotent
+        // (re-tap from the same account targets the same doc; second `setData`
+        // is a no-op, second `delete` is a no-op). Anyone signed in can read
+        // (likes are public so the count + liked-by-me state stays in sync).
+        // Writes are gated to the doc-id owner — no liking on someone else's
+        // behalf. The `onDayLike` Cloud Function denorms the count onto the
+        // parent day doc + the day-owner's user doc.
+        match /likes/{uid} {
+          allow read: if request.auth != null;
+          allow create: if request.auth != null
+                        && request.auth.uid == uid
+                        && request.resource.data.uid == uid
+                        && request.resource.data.createdAt == request.time
+                        && request.resource.data.keys().hasOnly(['uid','createdAt']);
+          allow delete: if request.auth != null
+                        && request.auth.uid == uid;
+          allow update: if false;
+        }
 
         match /clips/{clipId} {
           allow read: if request.auth != null

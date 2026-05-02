@@ -20,10 +20,9 @@ struct ArchiveView: View {
                 ScrollView {
                     LazyVStack(spacing: 12) {
                         ForEach(repo.days) { day in
-                            Button { playing = day } label: {
-                                ArchiveRow(day: day)
+                            ArchiveRow(blipId: blip.id, day: day) {
+                                playing = day
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                     .padding(16)
@@ -63,33 +62,52 @@ struct ArchiveView: View {
 }
 
 private struct ArchiveRow: View {
+    let blipId: String
     let day: BlipDay
+    let onPlay: () -> Void
+
+    @StateObject private var likes = DayLikesRepository()
 
     var body: some View {
         HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(BlipColor.surfaceElevated)
-                    .frame(width: 56, height: 80)
-                Image(systemName: "play.fill")
-                    .foregroundStyle(BlipColor.textPrimary)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(day.id)
-                    .font(BlipTypography.body)
-                    .foregroundStyle(BlipColor.textPrimary)
-                if let stitchedAt = day.stitchedAt {
-                    Text(relative(stitchedAt))
-                        .font(.caption2)
-                        .foregroundStyle(BlipColor.textTertiary)
+            // Tap thumbnail / metadata column to open the player. The heart sits
+            // outside this Button so it doesn't trigger play on like.
+            Button(action: onPlay) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(BlipColor.surfaceElevated)
+                            .frame(width: 56, height: 80)
+                        Image(systemName: "play.fill")
+                            .foregroundStyle(BlipColor.textPrimary)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(day.id)
+                            .font(BlipTypography.body)
+                            .foregroundStyle(BlipColor.textPrimary)
+                        if let stitchedAt = day.stitchedAt {
+                            Text(relative(stitchedAt))
+                                .font(.caption2)
+                                .foregroundStyle(BlipColor.textTertiary)
+                        }
+                    }
+                    Spacer()
                 }
             }
-            Spacer()
-            Image(systemName: "chevron.right")
-                .foregroundStyle(BlipColor.textTertiary)
+            .buttonStyle(.plain)
+
+            HeartButton(
+                liked: likes.liked,
+                count: likes.count,
+                isWriting: likes.isWriting,
+                onTap: { Task { await likes.toggle() } }
+            )
         }
         .padding(12)
         .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 14))
+        .task(id: day.id) {
+            likes.startListening(blipId: blipId, dateKey: day.id)
+        }
     }
 
     private func relative(_ date: Date) -> String {

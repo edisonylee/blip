@@ -242,8 +242,7 @@ private struct ProfileContent: View {
 
     private var statsRow: some View {
         HStack(spacing: 8) {
-            BlipStatTile(value: "\(followersCount)", label: "followers")
-            BlipStatTile(value: "\(followingCount)", label: "following")
+            BlipStatTile(value: "\(friendsCount)", label: "friends")
             BlipStatTile(value: "\(likesCount)", label: "likes")
         }
     }
@@ -325,19 +324,7 @@ private struct ProfileContent: View {
         profile?.school ?? "add your school"
     }
 
-    /// Until the real follow graph ships, both followers and following are
-    /// surfaced from `friendsCount` (friendship is symmetric today, so each
-    /// friend mutually counts as both). When Cloud Functions start writing
-    /// `followersCount` / `followingCount` separately, prefer those.
-    private var followersCount: Int {
-        let stored = profile?.followersCount ?? 0
-        return stored > 0 ? stored : (profile?.friendsCount ?? 0)
-    }
-
-    private var followingCount: Int {
-        let stored = profile?.followingCount ?? 0
-        return stored > 0 ? stored : (profile?.friendsCount ?? 0)
-    }
+    private var friendsCount: Int { profile?.friendsCount ?? 0 }
 
     private var likesCount: Int { profile?.likesCount ?? 0 }
 

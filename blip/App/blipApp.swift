@@ -54,6 +54,18 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     var users: UserRepository?
     var deepLinks: DeepLinkRouter?
 
+    /// Per-screen orientation gate. CaptureView / ReviewView flip this to
+    /// `.landscape` while on screen so the device rotates to match the camera's
+    /// landscape-native sensor; rest of the app stays `.portrait`.
+    static var lockedOrientation: UIInterfaceOrientationMask = .portrait
+
+    func application(
+        _ application: UIApplication,
+        supportedInterfaceOrientationsFor window: UIWindow?
+    ) -> UIInterfaceOrientationMask {
+        AppDelegate.lockedOrientation
+    }
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
