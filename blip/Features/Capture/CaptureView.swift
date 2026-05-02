@@ -18,7 +18,7 @@ struct CaptureView: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            BlipColor.mediaBackdrop.ignoresSafeArea()
 
             // Preview only renders for real cameras. Synthetic mode = no preview, just the record button.
             // Landscape 16:9 letterbox, centered. Black bars top/bottom in portrait orientation.
@@ -49,8 +49,35 @@ struct CaptureView: View {
                 Spacer()
                 statusOverlay
                 Spacer()
-                recordButton
-                    .padding(.bottom, 40)
+                ZStack {
+                    recordButton
+                    if session.state == .recording {
+                        // Accent ring sweeps as the 2-second cap counts down.
+                        // sweepAngle = 360 at t=0, → 0 at the cap. trim() expects
+                        // start/end in 0…1 of the circle.
+                        Circle()
+                            .trim(from: 0, to: max(0, min(1, 1 - session.recordingElapsed / CaptureSession.clipDuration)))
+                            .stroke(BlipColor.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                            .frame(width: 84, height: 84)
+                            .rotationEffect(.degrees(-90))
+                            .animation(.linear(duration: 0.1), value: session.recordingElapsed)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .padding(.bottom, 40)
+                .overlay(alignment: .top) {
+                    if session.state == .recording {
+                        let remaining = max(0, CaptureSession.clipDuration - session.recordingElapsed)
+                        Text("REC · \(String(format: "%.1f", remaining))s left")
+                            .font(.blip(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(BlipColor.error, in: Capsule())
+                            .offset(y: -28)
+                            .allowsHitTesting(false)
+                    }
+                }
             }
         }
         .navigationDestination(item: $recordingURL) { url in
@@ -68,7 +95,7 @@ struct CaptureView: View {
                     .frame(width: 36, height: 36)
                     .background(.black.opacity(0.4), in: Circle())
             }
-            .accessibilityLabel("Dismiss")
+            .accessibilityLabel("close")
             Spacer()
             Text(blip.name)
                 .font(BlipTypography.body)

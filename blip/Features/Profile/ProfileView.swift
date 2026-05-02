@@ -252,10 +252,10 @@ private struct ProfileContent: View {
 
     private var actionRow: some View {
         HStack(spacing: Self.actionRowSpacing) {
-            Button("Edit profile") { showHandleSheet = true }
+            Button("edit profile") { showHandleSheet = true }
                 .blipSecondary()
 
-            Button("Share profile") { showShareSheet = true }
+            Button("share profile") { showShareSheet = true }
                 .blipSecondary()
 
             Button { showSettings = true } label: {
@@ -279,13 +279,13 @@ private struct ProfileContent: View {
         HStack(spacing: Self.bottomCardSpacing) {
             BlipBottomCard(
                 icon: "trophy.fill",
-                label: "Rank on Blip",
+                label: "rank",
                 value: rankValue,
                 isLocked: isRankLocked
             )
             BlipBottomCard(
                 icon: "flame.fill",
-                label: "Current Streak",
+                label: "streak",
                 value: streakValue
             )
         }
@@ -312,7 +312,7 @@ private struct ProfileContent: View {
 
     private var memberSinceText: String {
         guard let createdAt = profile?.createdAt else { return "joined recently" }
-        return "Member since \(monthYear(createdAt))"
+        return "on blip since \(monthYear(createdAt))"
     }
 
     private func monthYear(_ date: Date) -> String {
@@ -322,7 +322,7 @@ private struct ProfileContent: View {
     }
 
     private var schoolText: String {
-        profile?.school ?? "Add school"
+        profile?.school ?? "add your school"
     }
 
     /// Until the real follow graph ships, both followers and following are

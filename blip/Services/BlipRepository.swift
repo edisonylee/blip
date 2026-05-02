@@ -1,5 +1,6 @@
 import FirebaseAuth
 import FirebaseFirestore
+import FirebaseFunctions
 import Foundation
 import OSLog
 
@@ -105,27 +106,82 @@ final class BlipRepository: ObservableObject, BlipRepositoryProtocol, BlipMutati
         ])
     }
 
-    /// Join via the legacy code (parity). Universal Link join lands when DeepLinkRouter ships.
+    /// Join via legacy code (parity). Calls the `joinBlip` Cloud Function so the
+    /// joinCode lookup and members-write happen under admin SDK — Firestore read
+    /// rules keep blip docs members-only, so a non-member can't query joinCodes
+    /// directly. After the function returns, we fetch the blip doc by id (we're
+    /// now a member, so the read rule passes).
     func joinBlip(code: String, uid: String) async throws -> Blip {
         let normalized = code.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalized.isEmpty else { throw BlipRepoError.emptyCode }
 
-        let snapshot = try await db.collection("blips")
-            .whereField("joinCode", isEqualTo: normalized)
-            .limit(to: 1)
-            .getDocuments()
+        let functions = Functions.functions(region: "us-central1")
+        let result: HTTPSCallableResult
+        do {
+            result = try await functions
+                .httpsCallable("joinBlip")
+                .call(["code": normalized])
+        } catch {
+            throw Self.mapJoinError(error)
+        }
 
-        guard let doc = snapshot.documents.first, var blip = Self.decode(doc: doc) else {
+        guard
+            let payload = result.data as? [String: Any],
+            let blipId = payload["blipId"] as? String
+        else {
             throw BlipRepoError.codeNotFound
         }
-        guard blip.members.count < blip.size else { throw BlipRepoError.blipFull }
-        if blip.members.contains(uid) { return blip }
 
-        try await db.collection("blips").document(blip.id).updateData([
-            "members": FieldValue.arrayUnion([uid])
-        ])
-        blip.members.append(uid)
+        let docSnap = try await db.collection("blips").document(blipId).getDocument()
+        guard
+            let queryDoc = docSnap as DocumentSnapshot?,
+            let blip = Self.decodeJoinedBlip(snapshot: queryDoc)
+        else {
+            throw BlipRepoError.codeNotFound
+        }
         return blip
+    }
+
+    /// Map `Functions` error codes to the existing `BlipRepoError` cases so the
+    /// UI's error-text path stays unified.
+    private static func mapJoinError(_ error: Error) -> BlipRepoError {
+        let nsErr = error as NSError
+        let code = FunctionsErrorCode(rawValue: nsErr.code)
+        switch code {
+        case .notFound: return .codeNotFound
+        case .failedPrecondition: return .blipFull
+        case .invalidArgument: return .emptyCode
+        default: return .codeNotFound
+        }
+    }
+
+    /// `decode(doc:)` requires a `QueryDocumentSnapshot`; this variant accepts a
+    /// general `DocumentSnapshot` (what `.getDocument()` returns) and adapts.
+    private static func decodeJoinedBlip(snapshot: DocumentSnapshot) -> Blip? {
+        guard let data = snapshot.data() else { return nil }
+        guard
+            let name = data["name"] as? String,
+            let ownerUid = data["ownerUid"] as? String,
+            let members = data["members"] as? [String],
+            let size = data["size"] as? Int,
+            let joinCode = data["joinCode"] as? String,
+            let tz = data["timezoneIdentifier"] as? String,
+            let ts = data["createdAt"] as? Timestamp
+        else { return nil }
+        let inviteUrl = (data["inviteUrl"] as? String).flatMap(URL.init(string:))
+        let adminUids = (data["adminUids"] as? [String]) ?? [ownerUid]
+        return Blip(
+            id: snapshot.documentID,
+            name: name,
+            ownerUid: ownerUid,
+            adminUids: adminUids,
+            members: members,
+            size: size,
+            joinCode: joinCode,
+            inviteUrl: inviteUrl,
+            timezoneIdentifier: tz,
+            createdAt: ts.dateValue()
+        )
     }
 
     /// Owner-only: grant or revoke admin role for a member.
@@ -137,6 +193,52 @@ final class BlipRepository: ObservableObject, BlipRepositoryProtocol, BlipMutati
         try await db.collection("blips").document(blipId).updateData([
             "adminUids": update
         ])
+    }
+
+    /// Any member can leave a blip. Two cascades:
+    ///  - **Last member leaving:** the entire blip + its data is torn down via the
+    ///    `deleteBlip` Cloud Function. This is the only path where a non-owner is
+    ///    allowed to call delete (the function recognises the "last member" case).
+    ///  - **Owner leaving with others present:** disallowed. The owner must either
+    ///    promote a successor first (existing admin flow) and re-call leave, or
+    ///    delete the blip outright.
+    func leaveBlip(blipId: String, uid: String) async throws {
+        guard !blipId.isEmpty else { throw BlipRepoError.emptyBlipId }
+        let ref = db.collection("blips").document(blipId)
+        let snap = try await ref.getDocument()
+        guard let data = snap.data() else { throw BlipRepoError.blipNotFound }
+        let ownerUid = data["ownerUid"] as? String
+        let members = (data["members"] as? [String]) ?? []
+        guard members.contains(uid) else { return }
+
+        // Last member out — call the server-side delete to clean up clips,
+        // messages, nudges, and storage in one shot.
+        if members.count == 1 {
+            try await deleteBlip(blipId: blipId)
+            return
+        }
+
+        // Owner can't simply leave when others remain — force them to delete
+        // the blip or transfer admin first.
+        if ownerUid == uid {
+            throw BlipRepoError.ownerCannotLeave
+        }
+
+        try await ref.updateData([
+            "members": FieldValue.arrayRemove([uid]),
+            "adminUids": FieldValue.arrayRemove([uid]),
+        ])
+    }
+
+    /// Owner-only delete (server-enforced). Tears down the blip doc, clips,
+    /// nudges, RTDB chat, and storage. The Cloud Function also accepts calls
+    /// from the *only remaining member* so the last-leaver cascade works.
+    func deleteBlip(blipId: String) async throws {
+        guard !blipId.isEmpty else { throw BlipRepoError.emptyBlipId }
+        let functions = Functions.functions(region: "us-central1")
+        _ = try await functions
+            .httpsCallable("deleteBlip")
+            .call(["blipId": blipId])
     }
 
     // MARK: - Helpers
@@ -184,6 +286,8 @@ enum BlipRepoError: LocalizedError {
     case blipFull
     case emptyBlipId
     case emptyMembers
+    case blipNotFound
+    case ownerCannotLeave
 
     var errorDescription: String? {
         switch self {
@@ -194,6 +298,8 @@ enum BlipRepoError: LocalizedError {
         case .blipFull: return "this blip is full."
         case .emptyBlipId: return "missing blip id."
         case .emptyMembers: return "members list can't be empty."
+        case .blipNotFound: return "blip no longer exists."
+        case .ownerCannotLeave: return "you own this blip — delete it or hand it off first."
         }
     }
 }

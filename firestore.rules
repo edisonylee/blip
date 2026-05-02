@@ -81,9 +81,25 @@ service cloud.firestore {
                         && request.resource.data.durationSeconds >= 0.5
                         && request.resource.data.durationSeconds <= 10.0;
 
+          // Two valid update paths:
+          //   1. Caption-only edit (long-press menu) — caption can mutate.
+          //   2. Author re-records the same hour — full payload rewrite, but
+          //      uid/hour are pinned and moderation fields (hidden, reportCount)
+          //      must be preserved so a re-record can't un-hide a flagged clip.
           allow update: if request.auth != null
                         && request.auth.uid == resource.data.uid
-                        && onlyEditableFieldsChanged(resource.data, request.resource.data);
+                        && (
+                          onlyEditableFieldsChanged(resource.data, request.resource.data)
+                          || (
+                            request.resource.data.uid == resource.data.uid
+                            && request.resource.data.hour == resource.data.hour
+                            && request.resource.data.durationSeconds is number
+                            && request.resource.data.durationSeconds >= 0.5
+                            && request.resource.data.durationSeconds <= 10.0
+                            && request.resource.data.hidden == resource.data.hidden
+                            && request.resource.data.reportCount == resource.data.reportCount
+                          )
+                        );
 
           allow delete: if request.auth != null
                         && request.auth.uid == resource.data.uid;

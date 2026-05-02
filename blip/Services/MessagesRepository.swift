@@ -29,6 +29,18 @@ final class MessagesRepository: ObservableObject {
     @Published private(set) var lastError: String?
     @Published private(set) var isLoading = false
 
+    /// Raw messages from RTDB before block filtering; kept so we can re-derive
+    /// `messages` when the blocklist changes without re-listening.
+    private var rawMessages: [BlipMessage] = []
+    private var blockedUsers: Set<String> = []
+
+    /// Push the current blocklist in. Owning view should call from
+    /// `.onReceive(moderation.$blockedUsers)`.
+    func setBlocklist(_ uids: Set<String>) {
+        blockedUsers = uids
+        messages = rawMessages.filter { !blockedUsers.contains($0.uid) }
+    }
+
     private var messagesQuery: DatabaseQuery?
     private var typingRef: DatabaseReference?
     private var receiptsRef: DatabaseReference?
@@ -88,8 +100,11 @@ final class MessagesRepository: ObservableObject {
             Task { @MainActor in
                 self.lastError = nil
                 self.isLoading = false
-                guard !self.messages.contains(where: { $0.id == msg.id }) else { return }
-                self.messages.append(msg)
+                guard !self.rawMessages.contains(where: { $0.id == msg.id }) else { return }
+                self.rawMessages.append(msg)
+                if !self.blockedUsers.contains(msg.uid) {
+                    self.messages.append(msg)
+                }
             }
         }, withCancel: { [weak self] error in
             Task { @MainActor in
@@ -104,6 +119,9 @@ final class MessagesRepository: ObservableObject {
                   let msg = BlipMessage(id: snap.key, data: data)
             else { return }
             Task { @MainActor in
+                if let idx = self.rawMessages.firstIndex(where: { $0.id == msg.id }) {
+                    self.rawMessages[idx] = msg
+                }
                 if let idx = self.messages.firstIndex(where: { $0.id == msg.id }) {
                     self.messages[idx] = msg
                 }
@@ -212,6 +230,7 @@ final class MessagesRepository: ObservableObject {
         typingHandle = nil
         receiptsHandle = nil
         hiddenHandle = nil
+        rawMessages = []
         messages = []
         typingUids = []
         receipts = [:]

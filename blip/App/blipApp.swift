@@ -1,3 +1,4 @@
+import AVFoundation
 import FirebaseAuth
 import FirebaseCore
 import FirebaseMessaging
@@ -37,6 +38,7 @@ struct blipApp: App {
                     appDelegate.users = users
                     appDelegate.deepLinks = deepLinks
                 }
+                .onReceive(moderation.$blockedUsers) { friendsRepo.setBlocklist($0) }
                 .onOpenURL { url in
                     // Firebase Auth gets first crack (phone/email link verifications).
                     // If it doesn't claim the URL, forward to our router so
@@ -57,6 +59,13 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         FirebaseApp.configure()
+
+        // Audio session — `.ambient` + `.mixWithOthers` lets the multiple muted
+        // grid players run concurrently. Default `.soloAmbient` causes iOS to
+        // pause sibling AVPlayers when a new one starts (bug seen in 2026-05
+        // testing: only one cell played at a time on a real device).
+        try? AVAudioSession.sharedInstance().setCategory(.ambient, options: [.mixWithOthers])
+        try? AVAudioSession.sharedInstance().setActive(true)
 
         // DEBUG: bypass APNs/reCAPTCHA so Firebase Console "test phone numbers"
         // work on simulator + non-paid-developer devices. Production builds always

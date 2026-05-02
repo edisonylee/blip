@@ -10,6 +10,8 @@ export { onClipPosted } from "./onClipPosted";
 export { exportStitch } from "./exportStitch";
 export { sendHourlyPrompt } from "./sendHourlyPrompt";
 export { deleteAccount } from "./deleteAccount";
+export { deleteBlip } from "./deleteBlip";
+export { joinBlip } from "./joinBlip";
 export { onReport } from "./onReport";
 export { onNudgeCreated } from "./onNudge";
 export { onClipCreatedUpdateStats, onFriendshipChangeUpdateCount } from "./userStats";

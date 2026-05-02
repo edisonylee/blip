@@ -8,11 +8,13 @@ struct LeaderboardView: View {
 
     @EnvironmentObject private var auth: AuthService
     @EnvironmentObject private var userDirectory: FirestoreUserDirectory
+    @EnvironmentObject private var moderation: ModerationService
 
     var body: some View {
         LeaderboardContent(
             currentUid: currentUid,
-            userDirectory: userDirectory
+            userDirectory: userDirectory,
+            moderation: moderation
         )
     }
 
@@ -28,9 +30,11 @@ private struct LeaderboardContent: View {
 
     @StateObject private var vm: LeaderboardViewModel
     private let currentUid: String?
+    @ObservedObject private var moderation: ModerationService
 
-    init(currentUid: String?, userDirectory: any UserRanking) {
+    init(currentUid: String?, userDirectory: any UserRanking, moderation: ModerationService) {
         self.currentUid = currentUid
+        self.moderation = moderation
         _vm = StateObject(wrappedValue: LeaderboardViewModel(userDirectory: userDirectory))
     }
 
@@ -50,7 +54,11 @@ private struct LeaderboardContent: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .task { vm.startListening() }
+        .task {
+            vm.startListening()
+            vm.setBlocklist(moderation.blockedUsers)
+        }
+        .onReceive(moderation.$blockedUsers) { vm.setBlocklist($0) }
         .onDisappear { vm.stopListening() }
     }
 

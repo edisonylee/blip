@@ -103,6 +103,7 @@ struct ChatView: View {
     let blip: Blip
 
     @EnvironmentObject private var auth: AuthService
+    @EnvironmentObject private var moderation: ModerationService
     @StateObject private var repo = MessagesRepository()
     @StateObject private var userProfiles = UserProfilesRepository()
 
@@ -158,8 +159,14 @@ struct ChatView: View {
         .toolbarBackground(BlipColor.background, for: .navigationBar)
         .task(id: blip.id) {
             repo.startListening(blipId: blip.id)
+            repo.setBlocklist(moderation.blockedUsers)
             userProfiles.observe(uids: blip.members)
+            userProfiles.setBlocklist(moderation.blockedUsers)
             repo.markSeen()
+        }
+        .onReceive(moderation.$blockedUsers) { uids in
+            repo.setBlocklist(uids)
+            userProfiles.setBlocklist(uids)
         }
         .onChange(of: repo.messages.count) { _, count in
             if count > 0 { repo.markSeen() }
@@ -650,7 +657,7 @@ private struct EmojiSheet: View {
                 TextField(
                     "",
                     text: $searchText,
-                    prompt: Text("Search emoji").foregroundStyle(BlipColor.textTertiary)
+                    prompt: Text("search").foregroundStyle(BlipColor.textTertiary)
                 )
                 .font(BlipTypography.body)
                 .foregroundStyle(BlipColor.textPrimary)
@@ -661,6 +668,7 @@ private struct EmojiSheet: View {
                             .font(.blip(size: 14))
                             .foregroundStyle(BlipColor.textTertiary)
                     }
+                    .accessibilityLabel("clear search")
                 }
             }
             .padding(.horizontal, 12)
@@ -793,7 +801,7 @@ struct ImagePreviewModal: View {
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            BlipColor.mediaBackdrop.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 topBar
@@ -839,7 +847,7 @@ struct ImagePreviewModal: View {
         .padding(.horizontal, 8)
         .padding(.top, 12)
         .padding(.bottom, 4)
-        .background(Color.black)
+        .background(BlipColor.mediaBackdrop)
     }
 
     // MARK: Image viewer (swipeable)
@@ -867,8 +875,8 @@ struct ImagePreviewModal: View {
                         .font(.blip(size: 15, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(width: 38, height: 38)
-                        .background(Color.black.opacity(0.58), in: Circle())
-                        .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
+                        .background(BlipColor.mediaBackdrop.opacity(0.58), in: Circle())
+                        .overlay(Circle().stroke(BlipColor.onMedia.opacity(0.18), lineWidth: 1))
                 }
                 .padding(.top, 14)
                 .padding(.trailing, 18)
@@ -894,7 +902,7 @@ struct ImagePreviewModal: View {
                 TextField(
                     "",
                     text: $caption,
-                    prompt: Text("Add a caption…").foregroundStyle(Color.white.opacity(0.5)),
+                    prompt: Text("add a caption…").foregroundStyle(BlipColor.onMedia.opacity(0.5)),
                     axis: .vertical
                 )
                 .lineLimit(1...3)
@@ -904,13 +912,13 @@ struct ImagePreviewModal: View {
                 .tint(.white)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(Color.white.opacity(0.12), in: Capsule())
+                .background(BlipColor.onMedia.opacity(0.12), in: Capsule())
 
                 // Bottom send button
                 Button { sendImages() } label: {
                     ZStack {
                         Circle()
-                            .fill(Color.white)
+                            .fill(BlipColor.onMedia)
                             .frame(width: 46, height: 46)
                         if isSending {
                             ProgressView().scaleEffect(0.8).tint(.black)
@@ -927,7 +935,7 @@ struct ImagePreviewModal: View {
             .padding(.vertical, 12)
             .background(
                 LinearGradient(
-                    colors: [Color.black.opacity(0), Color.black.opacity(0.85)],
+                    colors: [BlipColor.mediaBackdrop.opacity(0), BlipColor.mediaBackdrop.opacity(0.85)],
                     startPoint: .top, endPoint: .bottom
                 )
             )
@@ -946,7 +954,7 @@ struct ImagePreviewModal: View {
                             .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .stroke(currentIndex == index ? Color.white : Color.clear, lineWidth: 2)
+                                    .stroke(currentIndex == index ? BlipColor.onMedia : Color.clear, lineWidth: 2)
                             )
                             .onTapGesture { currentIndex = index }
 
@@ -957,7 +965,7 @@ struct ImagePreviewModal: View {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: 18))
                                 .foregroundStyle(.white)
-                                .background(Circle().fill(Color.black.opacity(0.6)).padding(2))
+                                .background(Circle().fill(BlipColor.mediaBackdrop.opacity(0.6)).padding(2))
                         }
                         .offset(x: 4, y: -4)
                     }
@@ -1079,13 +1087,13 @@ private struct MessageRow: View {
                     Button(role: .destructive) {
                         onDeleteForMe()
                     } label: {
-                        Label("Delete for Me", systemImage: "eye.slash")
+                        Label("hide for me", systemImage: "eye.slash")
                     }
                     if isMe || isAdmin {
                         Button(role: .destructive) {
                             onDeleteForEveryone()
                         } label: {
-                            Label("Delete for Everyone", systemImage: "trash.fill")
+                            Label("delete for everyone", systemImage: "trash.fill")
                         }
                     }
                 }
@@ -1451,7 +1459,7 @@ private struct LocalImageBubble: View {
                         ProgressView()
                             .tint(.white)
                             .padding(12)
-                            .background(Color.black.opacity(0.45), in: Circle())
+                            .background(BlipColor.mediaBackdrop.opacity(0.45), in: Circle())
                     }
                 }
 
@@ -1563,7 +1571,7 @@ private struct ImageGridShell<Cell: View>: View {
                             .font(.blip(size: 22, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(width: 56, height: 56)
-                            .background(Color.black.opacity(0.55), in: Circle())
+                            .background(BlipColor.mediaBackdrop.opacity(0.55), in: Circle())
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
@@ -1638,7 +1646,7 @@ private struct ImageGalleryModal: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            Color.black.ignoresSafeArea()
+            BlipColor.mediaBackdrop.ignoresSafeArea()
             TabView(selection: $currentIndex) {
                 ForEach(Array(urls.enumerated()), id: \.offset) { index, url in
                     AsyncImage(url: url) { phase in
@@ -1729,13 +1737,13 @@ private struct ClipMessageCard: View {
 
     private var playOverlay: some View {
         ZStack {
-            Color.black.opacity(0.25)
+            BlipColor.mediaBackdrop.opacity(0.25)
             Image(systemName: "video.fill").font(.blip(size: 22)).foregroundStyle(.white.opacity(0.9)).shadow(radius: 4)
         }
     }
     private var placeholderThumb: some View {
         ZStack {
-            Color.black
+            BlipColor.mediaBackdrop
             Image(systemName: "video.fill").font(.blip(size: 22)).foregroundStyle(.white.opacity(0.5))
         }
     }

@@ -42,6 +42,7 @@ final class CaptureSession: ObservableObject {
     private let movieOutput = AVCaptureMovieFileOutput()
     private let recordingDelegate = MovieRecordingDelegate()
     private var elapsedTask: Task<Void, Never>?
+    private var autoStopTask: Task<Void, Never>?
 
     /// Maximum clip length. Single source of truth — SyntheticClip, ClipUploader, and UI all read this.
     static let clipDuration: TimeInterval = 2.0
@@ -147,6 +148,7 @@ final class CaptureSession: ObservableObject {
 
     func stop() {
         elapsedTask?.cancel()
+        autoStopTask?.cancel()
         if useSynthetic { return }
         sessionQueue.async { [self] in
             if movieOutput.isRecording { movieOutput.stopRecording() }
@@ -197,6 +199,8 @@ final class CaptureSession: ObservableObject {
         return try await withCheckedThrowingContinuation { (cont: CheckedContinuation<URL, Error>) in
             recordingDelegate.completion = { [weak self] result in
                 Task { @MainActor in
+                    self?.autoStopTask?.cancel()
+                    self?.autoStopTask = nil
                     self?.elapsedTask?.cancel()
                     self?.elapsedTask = nil
                     self?.recordingElapsed = 0
@@ -209,6 +213,23 @@ final class CaptureSession: ObservableObject {
                 movieOutput.maxRecordedDuration = CMTime(seconds: Self.clipDuration, preferredTimescale: 600)
                 movieOutput.startRecording(to: url, recordingDelegate: recordingDelegate)
             }
+
+            // Defensive manual cap. `AVCaptureMovieFileOutput.maxRecordedDuration`
+            // is supposed to auto-stop at `clipDuration`, but it silently failed
+            // to fire on real-device runs in 2026-05 testing — recordings rolled
+            // forever. We schedule an explicit stop a hair past the native cap so
+            // the native path still gets first crack; if it already fired,
+            // `stopRecording()` is a no-op (we guard on `isRecording`).
+            scheduleAutoStop(after: Self.clipDuration + 0.3)
+        }
+    }
+
+    private func scheduleAutoStop(after delay: TimeInterval) {
+        autoStopTask?.cancel()
+        autoStopTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard let self, !Task.isCancelled else { return }
+            self.stopRecording()
         }
     }
 

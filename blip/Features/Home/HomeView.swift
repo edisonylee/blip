@@ -244,11 +244,14 @@ struct HomeView: View {
     // MARK: - Referral gate
 
     /// `true` while the user still has at least one unused blipchat slot.
+    /// Slots only constrain *creation* — joining via invite is unlimited.
     /// Defaults to "unlocked" when the profile hasn't streamed in yet so a
     /// fresh sign-in doesn't briefly show the locked state.
     private var canCreateBlip: Bool {
+        guard case .signedIn(let me) = auth.state else { return false }
         let unlocked = users.profile?.unlockedBlipSlots ?? 1
-        return repo.blips.count < unlocked
+        let createdCount = repo.blips.filter { $0.ownerUid == me }.count
+        return createdCount < unlocked
     }
 
     /// Locked-state share text — only the personal referral URL is needed
