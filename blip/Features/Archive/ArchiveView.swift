@@ -109,7 +109,7 @@ private struct ArchivePlayerSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color.black.ignoresSafeArea()
+                BlipColor.mediaBackdrop.ignoresSafeArea()
                 ArchivePlayer(url: url)
             }
             .toolbar {
@@ -125,6 +125,7 @@ private struct ArchivePlayerSheet: View {
                         Image(systemName: "square.and.arrow.up")
                             .foregroundStyle(BlipColor.textPrimary)
                     }
+                    .accessibilityLabel("share")
                 }
             }
             .toolbarBackground(.black, for: .navigationBar)
@@ -149,4 +150,11 @@ private struct ArchivePlayer: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {}
+
+    // Without this, the AVPlayer keeps decoding (and the Storage download
+    // keeps streaming) after the sheet dismisses — leaks memory + egress $.
+    static func dismantleUIViewController(_ uiViewController: AVPlayerViewController, coordinator: ()) {
+        uiViewController.player?.pause()
+        uiViewController.player = nil
+    }
 }

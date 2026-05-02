@@ -145,6 +145,44 @@ service cloud.firestore {
                     && resource.data.status == 'pending';
     }
 
+    // Reports — UGC moderation surface. The client writes one doc per report;
+    // the `onReport` trigger increments the offending clip's reportCount and
+    // hides it once the threshold is crossed.
+    //
+    // Forge-resistance: every required field is pinned to the caller's auth or
+    // a strict shape so a malicious client can't ghostwrite reports as someone
+    // else, fake the offending clip path, or expand the schema. Reports are
+    // per-reporter readable (so the user can see their own history) and never
+    // mutable client-side — moderation is server-driven via the trigger.
+    match /reports/{reportId} {
+      allow read: if request.auth != null
+                  && request.auth.uid == resource.data.reporterId;
+      allow create: if request.auth != null
+                    && request.resource.data.reporterId == request.auth.uid
+                    && request.resource.data.authorId is string
+                    && request.resource.data.authorId.size() > 0
+                    && request.resource.data.authorId.size() <= 64
+                    && request.resource.data.authorId != request.auth.uid
+                    && request.resource.data.clipId is string
+                    && request.resource.data.clipId.size() > 0
+                    && request.resource.data.clipId.size() <= 128
+                    && request.resource.data.clipPath is string
+                    && request.resource.data.clipPath.size() > 0
+                    && request.resource.data.clipPath.size() <= 512
+                    && request.resource.data.clipPath.matches('^blips/[^/]+/days/[^/]+/clips/[^/]+$')
+                    && request.resource.data.category in ['spam','harassment','nudity','violence','other']
+                    && request.resource.data.createdAt == request.time
+                    && request.resource.data.keys().hasOnly(
+                         ['clipId','clipPath','reporterId','authorId','category','createdAt']);
+      allow update, delete: if false;
+    }
+
+    // Per-user export-rate-limit lock written by the `exportStitch` callable.
+    // Server-only; clients never read or mutate it directly.
+    match /users/{uid}/exportLocks/{lockId} {
+      allow read, write: if false;
+    }
+
     // Friendships — subcollection-scoped under each user. Each side keeps its
     // own half (`/users/{uid}/friends/{friendUid}`) so the listener query is
     // trivial and a Phase 2 Cloud Function can trigger off the doc create to
@@ -168,6 +206,13 @@ service cloud.firestore {
 
       allow delete: if request.auth != null
                     && (request.auth.uid == uid || request.auth.uid == friendUid);
+    }
+
+    // Default-deny catch-all. Any collection not explicitly matched above is
+    // denied — keeps an unscoped future write from silently inheriting auth.
+    // Listed last so explicit rules above always win.
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 

@@ -56,7 +56,7 @@ struct ReviewView: View {
                     Image(systemName: "xmark").foregroundStyle(BlipColor.textPrimary)
                 }
                 .disabled(vm.isUploading)
-                .accessibilityLabel("Close")
+                .accessibilityLabel("close")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: post) {
@@ -69,7 +69,7 @@ struct ReviewView: View {
                     }
                 }
                 .disabled(!vm.canPost || vm.isUploading)
-                .accessibilityLabel("Post clip")
+                .accessibilityLabel("post")
             }
         }
         .toolbarBackground(BlipColor.background, for: .navigationBar)
@@ -160,4 +160,15 @@ private struct VideoPreview: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {}
+
+    // Tear down the AVQueuePlayer + looper when the review screen dismisses.
+    // The looper holds a strong reference to the queue player, which holds the
+    // AVPlayerItem — leaving them alive keeps the file open and decoder armed.
+    static func dismantleUIViewController(_ uiViewController: AVPlayerViewController, coordinator: Coordinator) {
+        coordinator.queuePlayer?.pause()
+        coordinator.looper?.disableLooping()
+        coordinator.looper = nil
+        coordinator.queuePlayer = nil
+        uiViewController.player = nil
+    }
 }
