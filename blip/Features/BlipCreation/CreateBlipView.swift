@@ -102,6 +102,51 @@ struct CreateBlipView: View {
                     }
                 }
             }
+
+            // Timezone picker — defaults to the creator's TZ. The day boundary
+            // (4AM in this zone) is fixed at create time per CLAUDE.md and used
+            // by the export stitch. Surface explicitly so a user travelling or
+            // sharing across zones can pin the group's anchor.
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("day starts 4am")
+                        .font(.blip(size: 11, weight: .semibold))
+                        .foregroundStyle(BlipColor.textTertiary)
+                        .textCase(.uppercase)
+                        .tracking(0.8)
+                    Spacer()
+                    Text(vm.timezoneShortName(vm.timezoneIdentifier))
+                        .font(.blip(size: 13))
+                        .foregroundStyle(BlipColor.textPrimary)
+                        .animation(.easeOut(duration: 0.15), value: vm.timezoneIdentifier)
+                }
+
+                Menu {
+                    Picker("timezone", selection: $vm.timezoneIdentifier) {
+                        ForEach(vm.timezoneOptions, id: \.self) { tz in
+                            Text(vm.timezoneShortName(tz)).tag(tz)
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text(vm.timezoneIdentifier.replacingOccurrences(of: "_", with: " "))
+                            .font(.blip(size: 15, weight: .medium))
+                            .foregroundStyle(BlipColor.textPrimary)
+                            .lineLimit(1)
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption)
+                            .foregroundStyle(BlipColor.textTertiary)
+                    }
+                    .frame(minHeight: 44)
+                    .padding(.horizontal, 16)
+                    .background(
+                        BlipColor.surface,
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
+                }
+                .accessibilityLabel("change timezone")
+            }
         }
         .padding(.horizontal, 24)
     }

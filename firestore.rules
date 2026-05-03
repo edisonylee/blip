@@ -23,7 +23,7 @@ service cloud.firestore {
       allow update: if request.auth != null
                     && request.auth.uid == uid
                     && !request.resource.data.diff(resource.data).affectedKeys()
-                       .hasAny(['totalClips','streakCurrent','streakBest','lastClipDay','friendsCount','referralsCount','referredByUid']);
+                       .hasAny(['totalClips','streakCurrent','streakBest','lastClipDay','friendsCount','likesCount','referralsCount','referredByUid']);
       allow delete: if false;
     }
 
@@ -67,6 +67,25 @@ service cloud.firestore {
                     && request.auth.uid in get(/databases/$(database)/documents/blips/$(blipId)).data.members;
         allow write: if false;
 
+        // Likes on a stitched day. Doc id is the liker's uid → idempotent
+        // (re-tap from the same account targets the same doc; second `setData`
+        // is a no-op, second `delete` is a no-op). Anyone signed in can read
+        // (likes are public so the count + liked-by-me state stays in sync).
+        // Writes are gated to the doc-id owner — no liking on someone else's
+        // behalf. The `onDayLike` Cloud Function denorms the count onto the
+        // parent day doc + the day-owner's user doc.
+        match /likes/{uid} {
+          allow read: if request.auth != null;
+          allow create: if request.auth != null
+                        && request.auth.uid == uid
+                        && request.resource.data.uid == uid
+                        && request.resource.data.createdAt == request.time
+                        && request.resource.data.keys().hasOnly(['uid','createdAt']);
+          allow delete: if request.auth != null
+                        && request.auth.uid == uid;
+          allow update: if false;
+        }
+
         match /clips/{clipId} {
           allow read: if request.auth != null
                       && request.auth.uid in get(/databases/$(database)/documents/blips/$(blipId)).data.members;
@@ -81,9 +100,25 @@ service cloud.firestore {
                         && request.resource.data.durationSeconds >= 0.5
                         && request.resource.data.durationSeconds <= 10.0;
 
+          // Two valid update paths:
+          //   1. Caption-only edit (long-press menu) — caption can mutate.
+          //   2. Author re-records the same hour — full payload rewrite, but
+          //      uid/hour are pinned and moderation fields (hidden, reportCount)
+          //      must be preserved so a re-record can't un-hide a flagged clip.
           allow update: if request.auth != null
                         && request.auth.uid == resource.data.uid
-                        && onlyEditableFieldsChanged(resource.data, request.resource.data);
+                        && (
+                          onlyEditableFieldsChanged(resource.data, request.resource.data)
+                          || (
+                            request.resource.data.uid == resource.data.uid
+                            && request.resource.data.hour == resource.data.hour
+                            && request.resource.data.durationSeconds is number
+                            && request.resource.data.durationSeconds >= 0.5
+                            && request.resource.data.durationSeconds <= 10.0
+                            && request.resource.data.hidden == resource.data.hidden
+                            && request.resource.data.reportCount == resource.data.reportCount
+                          )
+                        );
 
           allow delete: if request.auth != null
                         && request.auth.uid == resource.data.uid;
@@ -145,6 +180,44 @@ service cloud.firestore {
                     && resource.data.status == 'pending';
     }
 
+    // Reports — UGC moderation surface. The client writes one doc per report;
+    // the `onReport` trigger increments the offending clip's reportCount and
+    // hides it once the threshold is crossed.
+    //
+    // Forge-resistance: every required field is pinned to the caller's auth or
+    // a strict shape so a malicious client can't ghostwrite reports as someone
+    // else, fake the offending clip path, or expand the schema. Reports are
+    // per-reporter readable (so the user can see their own history) and never
+    // mutable client-side — moderation is server-driven via the trigger.
+    match /reports/{reportId} {
+      allow read: if request.auth != null
+                  && request.auth.uid == resource.data.reporterId;
+      allow create: if request.auth != null
+                    && request.resource.data.reporterId == request.auth.uid
+                    && request.resource.data.authorId is string
+                    && request.resource.data.authorId.size() > 0
+                    && request.resource.data.authorId.size() <= 64
+                    && request.resource.data.authorId != request.auth.uid
+                    && request.resource.data.clipId is string
+                    && request.resource.data.clipId.size() > 0
+                    && request.resource.data.clipId.size() <= 128
+                    && request.resource.data.clipPath is string
+                    && request.resource.data.clipPath.size() > 0
+                    && request.resource.data.clipPath.size() <= 512
+                    && request.resource.data.clipPath.matches('^blips/[^/]+/days/[^/]+/clips/[^/]+$')
+                    && request.resource.data.category in ['spam','harassment','nudity','violence','other']
+                    && request.resource.data.createdAt == request.time
+                    && request.resource.data.keys().hasOnly(
+                         ['clipId','clipPath','reporterId','authorId','category','createdAt']);
+      allow update, delete: if false;
+    }
+
+    // Per-user export-rate-limit lock written by the `exportStitch` callable.
+    // Server-only; clients never read or mutate it directly.
+    match /users/{uid}/exportLocks/{lockId} {
+      allow read, write: if false;
+    }
+
     // Friendships — subcollection-scoped under each user. Each side keeps its
     // own half (`/users/{uid}/friends/{friendUid}`) so the listener query is
     // trivial and a Phase 2 Cloud Function can trigger off the doc create to
@@ -168,6 +241,13 @@ service cloud.firestore {
 
       allow delete: if request.auth != null
                     && (request.auth.uid == uid || request.auth.uid == friendUid);
+    }
+
+    // Default-deny catch-all. Any collection not explicitly matched above is
+    // denied — keeps an unscoped future write from silently inheriting auth.
+    // Listed last so explicit rules above always win.
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 

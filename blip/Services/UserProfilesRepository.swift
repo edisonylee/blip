@@ -15,6 +15,20 @@ final class UserProfilesRepository: ObservableObject {
     /// rather than touching this directly so the fallbacks live in one place.
     @Published private(set) var profiles: [String: BlipUser] = [:]
 
+    @Published private(set) var blockedUsers: Set<String> = []
+
+    /// Push the current blocklist in. Owning view should call from
+    /// `.onReceive(moderation.$blockedUsers)`.
+    func setBlocklist(_ uids: Set<String>) {
+        blockedUsers = uids
+    }
+
+    /// True if a uid is blocked by the current user. Public accessors short-circuit
+    /// on this so blocked profiles render as unknown across every consuming view.
+    func isBlocked(_ uid: String) -> Bool {
+        blockedUsers.contains(uid)
+    }
+
     private let db = Firestore.firestore()
     private var listeners: [String: ListenerRegistration] = [:]
 
@@ -54,17 +68,20 @@ final class UserProfilesRepository: ObservableObject {
     }
 
     func displayName(for uid: String) -> String? {
+        if isBlocked(uid) { return nil }
         guard let name = profiles[uid]?.displayName, !name.isEmpty else { return nil }
         return name
     }
 
     /// @handle for the uid, nil if not claimed.
     func handle(for uid: String) -> String? {
-        profiles[uid]?.handle
+        if isBlocked(uid) { return nil }
+        return profiles[uid]?.handle
     }
 
     /// Best short label for a chat participant: displayName → @handle → phone → "anon".
     func chatLabel(for uid: String) -> String {
+        if isBlocked(uid) { return "blocked" }
         if let name = displayName(for: uid) { return name }
         if let h = handle(for: uid) { return "@\(h)" }
         if let phone = profiles[uid]?.phoneE164, !phone.isEmpty { return phone }
@@ -81,6 +98,7 @@ final class UserProfilesRepository: ObservableObject {
     /// Two-letter avatar initials derived from displayName. Falls back to a neutral
     /// dot when the profile hasn't loaded — never leaks a uid prefix into the UI.
     func initials(for uid: String) -> String {
+        if isBlocked(uid) { return Self.unknownInitials }
         guard let name = displayName(for: uid) else { return Self.unknownInitials }
         let tokens = name.split(separator: " ").prefix(Self.maxInitials)
         let letters = tokens.compactMap { $0.first }.map { String($0) }.joined()

@@ -80,6 +80,16 @@ enum BlipColor {
     /// Not theme-adaptive — video is always dark underneath.
     static let onMedia = Color.white
 
+    /// Pure-black backdrop for camera viewfinders and fullscreen media viewers.
+    /// Also the base for partial-coverage scrims drawn over media — apply
+    /// `.opacity(...)` for the scrim intensity needed.
+    /// Not theme-adaptive: viewfinders and media chrome are always rendered dark.
+    static let mediaBackdrop = Color.black
+
+    /// Invisible tap-target catcher. Use to claim taps on an otherwise empty
+    /// region without showing a visible surface.
+    static let touchProxy = Color.black.opacity(0.001)
+
     /// Inline error text. Warm rose — readable on both dark and light surfaces.
     static let error = adaptive(
         dark:  0xE87070,

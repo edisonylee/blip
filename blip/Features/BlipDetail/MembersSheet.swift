@@ -15,6 +15,9 @@ struct MembersSheet: View {
     @State private var actionError: String?
     @State private var orderedMembers: [String]
     @State private var editMode: EditMode = .inactive
+    @State private var showLeaveConfirm = false
+    @State private var showDeleteConfirm = false
+    @State private var isLeaving = false
 
     init(blip: Blip) {
         self.blip = blip
@@ -45,10 +48,40 @@ struct MembersSheet: View {
                         .foregroundStyle(BlipColor.error)
                         .padding(.horizontal, Layout.horizontalPadding)
                 }
+
+                dangerZone
+                    .padding(.horizontal, Layout.horizontalPadding)
+                    .padding(.bottom, Layout.headerTopPadding)
             }
         }
+        .confirmationDialog(
+            "leave this blip?",
+            isPresented: $showLeaveConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("leave", role: .destructive) { Task { await runLeave() } }
+            Button("cancel", role: .cancel) {}
+        } message: {
+            Text(isLastMember
+                 ? "you're the last one. leaving will permanently delete this blip and everything in it."
+                 : "your clips and messages here stay; you just won't see this blip anymore.")
+        }
+        .confirmationDialog(
+            "delete this blip?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("delete forever", role: .destructive) { Task { await runDelete() } }
+            Button("cancel", role: .cancel) {}
+        } message: {
+            Text("everyone loses access. clips, messages, and the export are gone for good.")
+        }
         .environment(\.editMode, $editMode)
-        .task(id: blip.id) { profiles.observe(uids: blip.members) }
+        .task(id: blip.id) {
+            profiles.observe(uids: blip.members)
+            profiles.setBlocklist(moderation.blockedUsers)
+        }
+        .onReceive(moderation.$blockedUsers) { profiles.setBlocklist($0) }
         .onChange(of: blip.members) { _, new in
             // Stay in sync if a remote snapshot lands while the sheet is open.
             // Don't clobber an in-flight local reorder.
@@ -98,7 +131,8 @@ struct MembersSheet: View {
                     onBlock: { Task { await runBlock(uid) } },
                     onUnblock: { Task { await runUnblock(uid) } },
                     onMakeAdmin: { Task { await runSetAdmin(uid, grant: true) } },
-                    onRemoveAdmin: { Task { await runSetAdmin(uid, grant: false) } }
+                    onRemoveAdmin: { Task { await runSetAdmin(uid, grant: false) } },
+                    onMute: { runMute(uid) }
                 )
                 .listRowBackground(BlipColor.surface)
                 .listRowSeparatorTint(BlipColor.surfaceElevated)
@@ -144,6 +178,73 @@ struct MembersSheet: View {
         catch { actionError = error.localizedDescription }
     }
 
+    /// Per-user nudge muting — UI-only stub. Backend (a per-recipient
+    /// `mutedSenders` array on the user doc that the fan-out cron filters
+    /// against) is the follow-up. Surfaces a toast so the affordance reads
+    /// as known-incomplete rather than silently broken.
+    private func runMute(_ uid: String) {
+        actionError = "muting nudges from this member is coming in v0.5"
+    }
+
+    private func runLeave() async {
+        guard case .signedIn(let me) = auth.state else { return }
+        isLeaving = true
+        defer { isLeaving = false }
+        do {
+            try await repo.leaveBlip(blipId: blip.id, uid: me)
+            actionError = nil
+            dismiss()
+        } catch {
+            actionError = error.localizedDescription
+        }
+    }
+
+    private func runDelete() async {
+        isLeaving = true
+        defer { isLeaving = false }
+        do {
+            try await repo.deleteBlip(blipId: blip.id)
+            actionError = nil
+            dismiss()
+        } catch {
+            actionError = error.localizedDescription
+        }
+    }
+
+    // MARK: - Subviews (danger zone)
+
+    @ViewBuilder
+    private var dangerZone: some View {
+        VStack(spacing: 8) {
+            if isOwner {
+                Button(role: .destructive) {
+                    showDeleteConfirm = true
+                } label: {
+                    Text(isLeaving ? "deleting…" : "delete blip")
+                        .frame(maxWidth: .infinity)
+                }
+                .blipSecondary()
+                .disabled(isLeaving)
+            } else {
+                Button(role: .destructive) {
+                    showLeaveConfirm = true
+                } label: {
+                    Text(isLeaving ? "leaving…" : "leave blip")
+                        .frame(maxWidth: .infinity)
+                }
+                .blipSecondary()
+                .disabled(isLeaving)
+            }
+        }
+    }
+
+    private var isLastMember: Bool {
+        if case .signedIn(let me) = auth.state {
+            return blip.members.count == 1 && blip.members.contains(me)
+        }
+        return false
+    }
+
     // MARK: - Helpers
 
     private func isMe(_ uid: String) -> Bool {
@@ -177,6 +278,7 @@ private struct MemberRow: View {
     let onUnblock: () -> Void
     let onMakeAdmin: () -> Void
     let onRemoveAdmin: () -> Void
+    let onMute: () -> Void
 
     var body: some View {
         HStack(spacing: Layout.rowSpacing) {
@@ -235,6 +337,7 @@ private struct MemberRow: View {
                             }
                             Divider()
                         }
+                        Button("mute their nudges", action: onMute)
                         Button("block \(blockLabel)", role: .destructive, action: onBlock)
                     } label: {
                         Image(systemName: "ellipsis")

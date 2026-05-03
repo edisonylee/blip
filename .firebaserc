@@ -1,6 +1,7 @@
 {
   "projects": {
-    "staging": "blip-4a5dc"
+    "default": "blip-4a5dc",
+    "production": "blip-4a5dc"
   },
   "targets": {},
   "etags": {}

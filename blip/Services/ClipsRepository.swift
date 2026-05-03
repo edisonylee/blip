@@ -24,8 +24,20 @@ final class ClipsRepository: ObservableObject {
     private var listener: ListenerRegistration?
     private(set) var blipId: String?
 
+    /// Raw clips from Firestore before block + hidden filtering.
+    /// Kept so we can re-derive `clips` when the blocklist changes without re-listening.
+    private var rawClips: [Clip] = []
+    private var blockedUsers: Set<String> = []
+
     deinit {
         listener?.remove()
+    }
+
+    /// Push the current blocklist in. Owning view should call from
+    /// `.onReceive(moderation.$blockedUsers)`.
+    func setBlocklist(_ uids: Set<String>) {
+        blockedUsers = uids
+        recomputeFiltered()
     }
 
     func startListening(blip: Blip) {
@@ -47,11 +59,8 @@ final class ClipsRepository: ObservableObject {
                         return
                     }
                     let docs = snap?.documents ?? []
-                    let decoded = docs.compactMap { Self.decode(doc: $0) }
-                    self.clips = decoded.sorted { $0.createdAt > $1.createdAt }
-                    self.clipsByHour = Dictionary(grouping: decoded, by: { $0.hour })
-                    let nowHour = Calendar.current.component(.hour, from: Date())
-                    self.postersThisHour = Set((self.clipsByHour[nowHour] ?? []).map { $0.uid })
+                    self.rawClips = docs.compactMap { Self.decode(doc: $0) }
+                    self.recomputeFiltered()
                 }
             }
     }
@@ -59,10 +68,19 @@ final class ClipsRepository: ObservableObject {
     func stopListening() {
         listener?.remove()
         listener = nil
+        rawClips = []
         clips = []
         clipsByHour = [:]
         postersThisHour = []
         blipId = nil
+    }
+
+    private func recomputeFiltered() {
+        let visible = rawClips.filter { !$0.hidden && !blockedUsers.contains($0.uid) }
+        clips = visible.sorted { $0.createdAt > $1.createdAt }
+        clipsByHour = Dictionary(grouping: visible, by: { $0.hour })
+        let nowHour = Calendar.current.component(.hour, from: Date())
+        postersThisHour = Set((clipsByHour[nowHour] ?? []).map { $0.uid })
     }
 
     // MARK: - Mutations (long-press menu, screen-10 parity)

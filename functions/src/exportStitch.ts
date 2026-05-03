@@ -47,7 +47,7 @@ export const exportStitch = onCall(
       throw new HttpsError("unauthenticated", "Sign in required.");
     }
     const blipId = request.data?.blipId;
-    if (typeof blipId !== "string" || blipId.length === 0) {
+    if (typeof blipId !== "string" || blipId.length === 0 || blipId.length > 64) {
       throw new HttpsError("invalid-argument", "blipId required");
     }
 
@@ -65,6 +65,45 @@ export const exportStitch = onCall(
     }
     const tz: string = blip.timezoneIdentifier ?? "UTC";
     const dateKey = todaysDateKey(tz);
+
+    // Rate-limit + in-progress lock. The lock doc lives at
+    // `users/{uid}/exportLocks/{blipId}_{dateKey}` and serves two purposes:
+    //   (1) cooldown — reject calls within COOLDOWN_MS of a successful run
+    //   (2) concurrency — reject overlapping calls already running
+    // ffmpeg + I/O for a single export is expensive enough that an unbounded
+    // tap-loop on the export button would otherwise rack up real money.
+    const COOLDOWN_MS = 30_000;
+    const STALE_LOCK_MS = 540_000; // function timeout
+    const lockRef = db
+      .collection("users").doc(uid)
+      .collection("exportLocks").doc(`${blipId}_${dateKey}`);
+
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(lockRef);
+      const now = Date.now();
+      const data = snap.data();
+      if (data) {
+        const startedAt: number | undefined = data.startedAtMs;
+        const finishedAt: number | undefined = data.finishedAtMs;
+        const state: string | undefined = data.state;
+        if (state === "running" && typeof startedAt === "number"
+            && now - startedAt < STALE_LOCK_MS) {
+          throw new HttpsError("aborted", "export already in progress");
+        }
+        if (state === "done" && typeof finishedAt === "number"
+            && now - finishedAt < COOLDOWN_MS) {
+          throw new HttpsError(
+            "resource-exhausted",
+            "wait a moment before exporting again",
+          );
+        }
+      }
+      tx.set(lockRef, {
+        state: "running",
+        startedAtMs: now,
+        startedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
 
     logger.info("exportStitch start", { blipId, uid, dateKey });
 
@@ -102,6 +141,7 @@ export const exportStitch = onCall(
     const sortedHours = [...byHour.keys()].sort((a, b) => a - b);
 
     const workdir = await fs.mkdtemp(path.join(os.tmpdir(), `stitch-${blipId}-`));
+    let exportFailed = false;
     try {
       // Download each unique clip exactly once via the admin SDK directly from
       // the bucket. We deliberately don't use the public `videoUrl` token here:
@@ -175,8 +215,21 @@ export const exportStitch = onCall(
       });
 
       return { url: stitchedUrl, dateKey, hours: sortedHours.length };
+    } catch (e) {
+      exportFailed = true;
+      throw e;
     } finally {
       await fs.rm(workdir, { recursive: true, force: true });
+      // Release the lock — `done` triggers the cooldown for subsequent calls;
+      // `failed` clears the lock so the user can retry without waiting.
+      await lockRef.set(
+        {
+          state: exportFailed ? "failed" : "done",
+          finishedAtMs: Date.now(),
+          finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      ).catch((err) => logger.warn("export lock release failed", { err }));
     }
   },
 );

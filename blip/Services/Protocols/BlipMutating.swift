@@ -9,4 +9,6 @@ protocol BlipMutating {
     func joinBlip(code: String, uid: String) async throws -> Blip
     func updateMemberOrder(blipId: String, members: [String]) async throws
     func setAdmin(blipId: String, uid: String, grant: Bool) async throws
+    func leaveBlip(blipId: String, uid: String) async throws
+    func deleteBlip(blipId: String) async throws
 }

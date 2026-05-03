@@ -45,12 +45,12 @@ struct OnboardingView: View {
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "phone.fill")
-                            Text("Continue with Phone")
+                            Text("continue with phone")
                         }
                     }
                     .blipSecondary()
 
-                    Button("Continue without account") {
+                    Button("browse without an account") {
                         Task { await auth.signInAnonymously() }
                     }
                     .blipGhost()

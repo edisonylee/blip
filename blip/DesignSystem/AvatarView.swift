@@ -62,5 +62,5 @@ struct AvatarRowMember: Identifiable {
         }, maxVisible: 5)
     }
     .padding()
-    .background(Color.black)
+    .background(BlipColor.mediaBackdrop)
 }

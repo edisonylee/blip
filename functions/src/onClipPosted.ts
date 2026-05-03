@@ -19,6 +19,8 @@ export const onClipPosted = onDocumentCreated(
   {
     document: "blips/{blipId}/days/{dateKey}/clips/{clipId}",
     region: "us-central1",
+    memory: "512MiB",
+    timeoutSeconds: 60,
   },
   async (event) => {
     const snap = event.data;

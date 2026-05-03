@@ -136,12 +136,14 @@ struct MemberGrid: View {
         // scaled to the rendered container size. This handles every layout
         // pattern uniformly — equal grid rows, the half-width centered lone
         // cell (odd N ≥ 7), and the N=1 landscape-letterbox case — without
-        // per-pattern row math. Black canvas background fills the gaps where
-        // no cell sits, matching the server-side `pad=…:black` stitch output.
+        // per-pattern row math. The grid backing is transparent so the
+        // surrounding chat background shows through the rounded-corner gaps
+        // between cells (in both dark and light themes). The export pipeline
+        // still pads with `pad=black` server-side; this is preview-only.
         GeometryReader { geo in
             let scale = geo.size.width / MemberGridLayout.canvasWidth
             ZStack(alignment: .topLeading) {
-                BlipColor.blackCell
+                Color.clear
                 ForEach(Array(seats.enumerated()), id: \.offset) { idx, seat in
                     let cell = layout.cells[idx]
                     SeatView(
@@ -151,7 +153,8 @@ struct MemberGrid: View {
                         isAuthor: isAuthor,
                         onDelete: onDelete,
                         onEditCaption: onEditCaption,
-                        onNudge: onNudge
+                        onNudge: onNudge,
+                        onReRecord: isCurrentHour ? onRecord : nil
                     )
                     .frame(width: cell.w * scale, height: cell.h * scale)
                     .offset(x: cell.x * scale, y: cell.y * scale)
@@ -212,6 +215,10 @@ private struct SeatView: View {
     let onDelete: (BlipClip) -> Void
     let onEditCaption: (BlipClip) -> Void
     let onNudge: ((String) -> Void)?
+    /// Non-nil only on the current hour and only for the author's own seat —
+    /// surfaces a "re-record" option in the context menu so the action is
+    /// discoverable beyond the bare tap-the-tile gesture.
+    let onReRecord: (() -> Void)?
 
     var body: some View {
         Group {
@@ -227,7 +234,8 @@ private struct SeatView: View {
                     clip: clip,
                     isAuthor: isAuthor(clip),
                     onDelete: { onDelete(clip) },
-                    onEditCaption: { onEditCaption(clip) }
+                    onEditCaption: { onEditCaption(clip) },
+                    onReRecord: (isMine && onReRecord != nil) ? onReRecord : nil
                 )
 
             case .recordPrompt(let initials):
@@ -259,6 +267,7 @@ private struct PostedSeat: View {
     var body: some View {
         ZStack {
             ClipPlayerView(url: clip.videoUrl)
+                .allowsHitTesting(false)
 
             // Centered both horizontally and vertically over the entire clip frame.
             ClipTimestampLabel(hour: clip.hour)
@@ -393,23 +402,32 @@ private struct InviteSeat: View {
 // MARK: - Auto-loop player
 
 /// Auto-loop video preview for a posted clip. Mutes audio so the grid doesn't blare.
-/// Coordinator owns the loop observer and pauses/tears down the player on dismantle
-/// so off-screen cells don't keep decoding.
+/// Uses `AVPlayerLooper` + `AVQueuePlayer` (Apple-recommended pattern) — the
+/// looper handles seek timing and end-of-content edge cases that the older
+/// notification-based loop hit on iOS 26 + audio-session changes.
 private struct ClipPlayerView: UIViewControllerRepresentable {
     let url: URL
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let player = AVPlayer(url: url)
-        player.isMuted = true
-        player.actionAtItemEnd = .none
+        let item = AVPlayerItem(url: url)
+        let queuePlayer = AVQueuePlayer()
+        queuePlayer.isMuted = true
+        let looper = AVPlayerLooper(player: queuePlayer, templateItem: item)
+        context.coordinator.queuePlayer = queuePlayer
+        context.coordinator.looper = looper
+
         let vc = AVPlayerViewController()
-        vc.player = player
+        vc.player = queuePlayer
         vc.showsPlaybackControls = false
         vc.videoGravity = .resizeAspectFill
-        context.coordinator.attach(player: player)
-        player.play()
+        // AVPlayerViewController's view defaults to opaque black, which bleeds
+        // through at every rounded corner of the seat clipShape. Clearing the
+        // backgrounds lets the SwiftUI clipShape do its job cleanly.
+        vc.view.backgroundColor = .clear
+        vc.contentOverlayView?.backgroundColor = .clear
+        queuePlayer.play()
         return vc
     }
 
@@ -417,32 +435,18 @@ private struct ClipPlayerView: UIViewControllerRepresentable {
 
     static func dismantleUIViewController(_ uiViewController: AVPlayerViewController, coordinator: Coordinator) {
         coordinator.tearDown()
-        uiViewController.player?.pause()
         uiViewController.player = nil
     }
 
     final class Coordinator {
-        private var loopToken: NSObjectProtocol?
-        private weak var player: AVPlayer?
-
-        func attach(player: AVPlayer) {
-            self.player = player
-            loopToken = NotificationCenter.default.addObserver(
-                forName: .AVPlayerItemDidPlayToEndTime,
-                object: player.currentItem,
-                queue: .main
-            ) { [weak player] _ in
-                player?.seek(to: .zero)
-                player?.play()
-            }
-        }
+        var queuePlayer: AVQueuePlayer?
+        var looper: AVPlayerLooper?
 
         func tearDown() {
-            if let token = loopToken {
-                NotificationCenter.default.removeObserver(token)
-                loopToken = nil
-            }
-            player?.pause()
+            queuePlayer?.pause()
+            looper?.disableLooping()
+            looper = nil
+            queuePlayer = nil
         }
 
         deinit { tearDown() }

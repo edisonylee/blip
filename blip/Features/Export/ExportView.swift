@@ -14,8 +14,10 @@ struct ExportView: View {
     let blip: Blip
 
     @EnvironmentObject private var auth: AuthService
+    @EnvironmentObject private var moderation: ModerationService
     @StateObject private var service = ExportService()
     @StateObject private var clips = ClipsRepository()
+    @StateObject private var likes = DayLikesRepository()
 
     @State private var showShare = false
     /// MP4 downloaded from the stitched URL into the app's tmp directory. We
@@ -42,7 +44,11 @@ struct ExportView: View {
                 failedState(msg: msg)
             }
         }
-        .task(id: blip.id) { clips.startListening(blip: blip) }
+        .task(id: blip.id) {
+            clips.startListening(blip: blip)
+            clips.setBlocklist(moderation.blockedUsers)
+        }
+        .onReceive(moderation.$blockedUsers) { clips.setBlocklist($0) }
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Text("export").font(BlipTypography.body).foregroundStyle(BlipColor.textPrimary)
@@ -170,21 +176,30 @@ struct ExportView: View {
                     Text("·")
                     Text("preparing…")
                 }
+                Spacer()
+                HeartButton(
+                    liked: likes.liked,
+                    count: likes.count,
+                    isWriting: likes.isWriting,
+                    onTap: { Task { await likes.toggle() } }
+                )
             }
             .font(BlipTypography.caption)
             .foregroundStyle(BlipColor.textTertiary)
+            .padding(.horizontal, 16)
 
             HStack(spacing: 10) {
                 shareButton
                 if InstagramStoryShare.isAvailable {
                     instagramStoryButton
                 }
-                editPlaceholderButton
+                tikTokShareButton
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
         }
         .task(id: url) { await downloadForSharing(remoteURL: url) }
+        .task(id: dateKey) { likes.startListening(blipId: blip.id, dateKey: dateKey) }
         .sheet(isPresented: $showShare) {
             // Always pass the local file when we have it — that's what unlocks
             // Save Video / TikTok / etc. Fall back to the remote URL only if
@@ -224,17 +239,20 @@ struct ExportView: View {
         .accessibilityLabel("Share to Instagram story")
     }
 
-    /// Placeholder for per-clip editing (decided 2026-04-29 to ship preview-only first).
-    private var editPlaceholderButton: some View {
-        Button {} label: {
-            Image(systemName: "slider.horizontal.3")
+    /// TikTok share — virality is the #1 product priority (CLAUDE.md). Opens
+    /// the iOS share sheet, which surfaces TikTok automatically when the app is
+    /// installed and the activity item is a real `.mp4` file. The dedicated
+    /// button gives the destination prominence the generic share button doesn't.
+    private var tikTokShareButton: some View {
+        Button { showShare = true } label: {
+            Image(systemName: "music.note")
                 .font(.body)
-                .foregroundStyle(BlipColor.textTertiary)
+                .foregroundStyle(BlipColor.textPrimary)
                 .frame(width: 44, height: 44)
                 .background(BlipColor.surface, in: Circle())
         }
-        .disabled(true)
-        .accessibilityLabel("Edit (coming soon)")
+        .disabled(localVideoURL == nil)
+        .accessibilityLabel("Share to TikTok")
     }
 
     /// Pull the stitched MP4 to a tmp file so the share sheet can attach it
@@ -321,4 +339,12 @@ private struct ExportPlayerView: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {}
+
+    // Without this, dismissing the export preview leaves the AVPlayer + its
+    // Storage download alive in the background. The export file is large; a
+    // leak here costs both memory and egress.
+    static func dismantleUIViewController(_ uiViewController: AVPlayerViewController, coordinator: ()) {
+        uiViewController.player?.pause()
+        uiViewController.player = nil
+    }
 }
