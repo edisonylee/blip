@@ -13,19 +13,19 @@ enum BlipColor {
     /// App background — pure black in dark, warm cream in light.
     static let background = adaptive(
         dark:  0x000000,
-        light: 0xF5F0EB
+        light: 0x000000
     )
 
     /// Card / list row surface.
     static let surface = adaptive(
-        dark:  0x0A0A0A,
-        light: 0xEDEAE4
+        dark: 0x4A4A4A,
+        light: 0x4A4A4A
     )
 
     /// Elevated surface (sheets, popovers).
     static let surfaceElevated = adaptive(
-        dark:  0x171717,
-        light: 0xE5E0D8
+        dark:  0x393939,
+        light: 0x393939
     )
 
     static let border = Color(uiColor: UIColor { t in
@@ -37,18 +37,18 @@ enum BlipColor {
     // MARK: - Type
 
     static let textPrimary = adaptive(
-        dark:  0xFAFAFA,
-        light: 0x1A1512
+        dark:  0xFFFFFF,
+        light: 0xFFFFFF,
     )
 
     static let textSecondary = adaptive(
-        dark:  0xA1A1AA,
-        light: 0x4A453F
+        dark:  0xFFFFFF,
+        light: 0xFFFFFF
     )
 
     static let textTertiary = adaptive(
-        dark:  0x52525B,
-        light: 0x847E78
+        dark:  0xFFFFFF,
+        light: 0xFFFFFF
     )
 
     // MARK: - Accent
@@ -93,11 +93,10 @@ enum BlipColor {
     /// Inline error text. Warm rose — readable on both dark and light surfaces.
     static let error = adaptive(
         dark:  0xE87070,
-        light: 0xC93535
+        light: 0xE87070
     )
 
     // MARK: - Progress ring
-
     static let progressTrack = Color(uiColor: UIColor { t in
         t.userInterfaceStyle == .dark
             ? UIColor.white.withAlphaComponent(0.08)
@@ -118,7 +117,6 @@ enum BlipColor {
 }
 
 // MARK: - UIColor hex convenience
-
 private extension UIColor {
     convenience init(hex: UInt32) {
         let r = CGFloat((hex >> 16) & 0xFF) / 255
