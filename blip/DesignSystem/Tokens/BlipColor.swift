@@ -6,6 +6,7 @@ import UIKit
 ///
 /// Dark palette:  pure black surfaces, neutral cool grays, white primary type.
 /// Light palette: warm cream surfaces, near-black type, amber semantic accent.
+/// 
 enum BlipColor {
     // MARK: - Surfaces
     /// App background — pure black in dark, warm cream in light.

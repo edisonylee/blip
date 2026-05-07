@@ -7,4 +7,8 @@ enum BlipSpacing {
     static let lg:  CGFloat = 16
     static let xl:  CGFloat = 24
     static let xxl: CGFloat = 32
+
+    static let buttonHeight:     CGFloat = 52
+    static let textButtonHeight: CGFloat = 44
+    static let tapTarget:        CGFloat = 44
 }
