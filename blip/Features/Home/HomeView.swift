@@ -130,7 +130,7 @@ struct HomeView: View {
             VStack(spacing: 24) {
                 VStack(spacing: 8) {
                     Text("who's in your day?")
-                        .font(.blip(size: 26, weight: .bold, design: .rounded))
+                        .font(BlipTypography.title)
                         .foregroundStyle(BlipColor.textPrimary)
                     Text("start a blip with friends — every hour,\nyou each post 2 seconds of your day.")
                         .font(BlipTypography.body)
