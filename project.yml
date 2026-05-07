@@ -41,12 +41,14 @@ targets:
         NSMicrophoneUsageDescription: "blip uses your microphone so your clips have sound."
         NSPhotoLibraryAddUsageDescription: "Save the day's stitched vlog to your photos."
         UIAppFonts:
-          - Fonts/Geist-Light.otf
-          - Fonts/Geist-Regular.otf
-          - Fonts/Geist-Medium.otf
-          - Fonts/Geist-SemiBold.otf
-          - Fonts/Geist-Bold.otf
-          - Fonts/Geist-Black.otf
+          - Fonts/Manrope-ExtraLight.ttf
+          - Fonts/Manrope-Light.ttf
+          - Fonts/Manrope-Regular.ttf
+          - Fonts/Manrope-Medium.ttf
+          - Fonts/Manrope-SemiBold.ttf
+          - Fonts/Manrope-Bold.ttf
+          - Fonts/Manrope-ExtraBold.ttf
+          - Fonts/Judson-Bold.ttf
         UILaunchScreen:
           UIColorName: ""
         UISupportedInterfaceOrientations:

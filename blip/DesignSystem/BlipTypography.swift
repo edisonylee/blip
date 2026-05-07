@@ -1,35 +1,36 @@
 import SwiftUI
 
-/// Per setlog-research/mood-principles.md principle #4 — time is the typography.
-/// Hours, timestamps, countdowns get weight. Everything else gets out of their way.
-///
-/// All in-app chrome resolves to Geist (bundled via `project.yml` UIAppFonts).
-/// Use these tokens — never `Font.system(...)` inline — so a face swap stays
-/// one-file-change.
 enum BlipTypography {
-    /// PostScript names for the bundled Geist faces. Keep in lockstep with
-    /// `project.yml` UIAppFonts entries — if a name here doesn't match the
-    /// PostScript name in the .otf, SwiftUI silently falls back to SF.
+    // typography
     private enum Face {
-        static let light    = "Geist-Light"
-        static let regular  = "Geist-Regular"
-        static let medium   = "Geist-Medium"
-        static let semibold = "Geist-SemiBold"
-        static let bold     = "Geist-Bold"
-        static let black    = "Geist-Black"
+        static let light    = "Manrope-Light"
+        static let regular  = "Manrope-Regular"
+        static let medium   = "Manrope-Medium"
+        static let semibold = "Manrope-SemiBold"
+        static let bold     = "Manrope-Bold"
+        static let black     = "Judson-Bold"
     }
 
-    /// Wordmark — used **only at the export's end card**, never in-app chrome
-    /// (signature move per mood doc). Onboarding is the one exception, since it's
-    /// a pre-app moment that introduces the brand.
-    static let wordmark = Font.custom(Face.black, size: 38)
+    // font size
+    private enum BlipFontSize {
+        static let sm: CGFloat = 13    
+        static let md: CGFloat = 16    // captions
+        static let lg: CGFloat = 20    // card headings
+        static let xl: CGFloat = 36    // header, buttons
 
-    static let title   = Font.custom(Face.semibold, size: 22)
-    static let body    = Font.custom(Face.regular, size: 16)
-    static let caption = Font.custom(Face.regular, size: 13)
+        static let timestamp: CGFloat = 36  // clip overlay
+        static let wordmark: CGFloat = 36   // export end card only
+    }
+
+    static let title   = Font.custom(Face.semibold, size: BlipFontSize.xl)
+    static let body    = Font.custom(Face.medium, size: BlipFontSize.lg)
+    static let caption = Font.custom(Face.medium, size: BlipFontSize.md)
+
+    static let wordmark = Font.custom(Face.black, size: BlipFontSize.xl)
 
     /// Geist-style tracking applied at call sites for titles / 18pt card headings.
     /// Use as: `Text(...).font(BlipTypography.title).tracking(BlipTypography.titleTracking)`
+    
     static let titleTracking: CGFloat = -0.2
 
     /// Hour timestamps that overlay clips center-of-frame.
@@ -47,6 +48,7 @@ enum BlipTypography {
     /// Map a SwiftUI `Font.Weight` onto the bundled Geist PostScript faces.
     /// Used internally by the `Font.blip(...)` helper so call sites can keep
     /// the same shape as the old `Font.system(size:weight:)` calls.
+
     fileprivate static func geistFace(for weight: Font.Weight) -> String {
         switch weight {
         case .ultraLight, .thin, .light:    return Face.light
