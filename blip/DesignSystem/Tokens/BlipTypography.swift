@@ -7,8 +7,8 @@ enum BlipTypography {
         static let regular  = "Manrope-Regular"
         static let medium   = "Manrope-Medium"
         static let semibold = "Manrope-SemiBold"
-        static let bold     = "Manrope Bold"
-        static let black    = "Judson Bold"
+        static let bold     = "Manrope-Bold"
+        static let black    = "Judson-Bold"
     }
 
     // font size
