@@ -7,8 +7,8 @@ enum BlipTypography {
         static let regular  = "Manrope-Regular"
         static let medium   = "Manrope-Medium"
         static let semibold = "Manrope-SemiBold"
-        static let bold     = "Manrope-Bold"
-        static let black    = "Judson-Bold"
+        static let bold     = "Manrope Bold"
+        static let black    = "Judson Bold"
     }
 
     // font size
@@ -19,10 +19,10 @@ enum BlipTypography {
         static let xl: CGFloat = 36    // header, buttons
 
         static let timestamp: CGFloat = 36  // clip overlay
-        static let wordmark: CGFloat = 36   // export end card only
+        static let wordmark:  CGFloat = 36  // export end card only
     }
 
-    static let title   = Font.custom(Face.semibold, size: BlipFontSize.xl)
+    static let title   = Font.custom(Face.black, size: BlipFontSize.xl)
     static let body    = Font.custom(Face.medium, size: BlipFontSize.lg)
     static let caption = Font.custom(Face.medium, size: BlipFontSize.md)
     static let wordmark = Font.custom(Face.black, size: BlipFontSize.xl)
