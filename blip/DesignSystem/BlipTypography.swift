@@ -25,31 +25,27 @@ enum BlipTypography {
     static let title   = Font.custom(Face.semibold, size: BlipFontSize.xl)
     static let body    = Font.custom(Face.medium, size: BlipFontSize.lg)
     static let caption = Font.custom(Face.medium, size: BlipFontSize.md)
-
     static let wordmark = Font.custom(Face.black, size: BlipFontSize.xl)
 
-    /// Geist-style tracking applied at call sites for titles / 18pt card headings.
+    /// Tracking applied at call sites for titles / card headings.
     /// Use as: `Text(...).font(BlipTypography.title).tracking(BlipTypography.titleTracking)`
-    
     static let titleTracking: CGFloat = -0.2
 
     /// Hour timestamps that overlay clips center-of-frame.
-    /// Skinny Geist Light + tabular figures so "5:00 PM" / "12:00 AM" align cleanly.
-    static let clipTimestamp = Font.custom(Face.light, size: 32).monospacedDigit()
+    /// Judson Bold + tabular figures so "5:00 PM" / "12:00 AM" align cleanly.
+    static let clipTimestamp = Font.custom(Face.black, size: BlipFontSize.xl).monospacedDigit()
 
-    /// Companion font for the AM/PM suffix on clip overlays — visibly smaller
-    /// and lighter than the digits so the overlay reads as time without
-    /// dominating the frame.
-    static let clipTimestampSuffix = Font.custom(Face.light, size: 13)
+    /// Companion font for the AM/PM suffix on clip overlays.
+    static let clipTimestampSuffix = Font.custom(Face.black, size: BlipFontSize.xl)
 
     /// Smaller hour label used for archive rows + countdown.
-    static let timeLabel = Font.custom(Face.semibold, size: 14).monospacedDigit()
+    static let timeLabel = Font.custom(Face.semibold, size: BlipFontSize.lg).monospacedDigit()
 
-    /// Map a SwiftUI `Font.Weight` onto the bundled Geist PostScript faces.
+    /// Map a SwiftUI `Font.Weight` onto the bundled Manrope/Judson PostScript faces.
     /// Used internally by the `Font.blip(...)` helper so call sites can keep
     /// the same shape as the old `Font.system(size:weight:)` calls.
 
-    fileprivate static func geistFace(for weight: Font.Weight) -> String {
+    fileprivate static func customFace(for weight: Font.Weight) -> String {
         switch weight {
         case .ultraLight, .thin, .light:    return Face.light
         case .regular:                      return Face.regular
@@ -63,11 +59,12 @@ enum BlipTypography {
 }
 
 /// Drop-in replacement for `Font.system(size:weight:design:)` that resolves to
-/// the bundled Geist family. Behaves identically at call sites — pass `.bold`,
+/// the bundled custom font family. Behaves identically at call sites — pass `.bold`,
 /// `.semibold`, etc. — but a single rebuild ships a coherent typographic system.
 ///
-/// `.monospaced` and `.rounded` designs have no Geist equivalent (only the
+/// `.monospaced` and `.rounded` designs have no custom font equivalent (only the
 /// basic family is bundled), so they fall back to the SF system variant.
+
 extension Font {
     static func blip(
         size: CGFloat,
@@ -78,7 +75,7 @@ extension Font {
         case .monospaced, .rounded:
             return .system(size: size, weight: weight, design: design)
         default:
-            return .custom(BlipTypography.geistFace(for: weight), size: size)
+            return .custom(BlipTypography.customFace(for: weight), size: size)
         }
     }
 }
