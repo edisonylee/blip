@@ -22,10 +22,11 @@ enum BlipTypography {
         static let wordmark:  CGFloat = 36  // export end card only
     }
 
-    static let title   = Font.custom(Face.black, size: BlipFontSize.xl)
-    static let body    = Font.custom(Face.medium, size: BlipFontSize.lg)
-    static let caption = Font.custom(Face.medium, size: BlipFontSize.md)
-    static let wordmark = Font.custom(Face.black, size: BlipFontSize.xl)
+    static let title     = Font.custom(Face.black,    size: BlipFontSize.xl)
+    static let body      = Font.custom(Face.medium,   size: BlipFontSize.lg)
+    static let cardTitle = Font.custom(Face.semibold, size: BlipFontSize.lg)
+    static let caption   = Font.custom(Face.medium,   size: BlipFontSize.md)
+    static let wordmark  = Font.custom(Face.black,    size: BlipFontSize.xl)
 
     /// Tracking applied at call sites for titles / card headings.
     /// Use as: `Text(...).font(BlipTypography.title).tracking(BlipTypography.titleTracking)`

@@ -54,7 +54,7 @@ enum BlipColor {
 
     /// Warm-amber semantic accent — reserved for live/recording states (progress
     /// fill, active dot). No longer the primary CTA color in dark mode.
-    static let accent = Color(red: 0.91, green: 0.66, blue: 0.49)   // #E8A87C
+    static let accent = Color(red: 1.19, green: 1.19, blue: 1.19)   // #777777
 
     /// Neutral CTA fill — white in dark, near-black in light. Use for primary
     /// buttons; contrast (not hue) carries the "moment that matters."
@@ -103,6 +103,19 @@ enum BlipColor {
     })
 
     static let progressFill = accent
+
+    // MARK: - Card palette
+
+    /// Muted, dark background colors for blipchat cards. Picked by hashing the
+    /// blip ID so each room gets a consistent color across sessions.
+    static let cardPalette: [Color] = [
+        Color(uiColor: UIColor(hex: 0x2D3561)),  // navy
+        Color(uiColor: UIColor(hex: 0x3D1F1F)),  // maroon
+        Color(uiColor: UIColor(hex: 0x2B3320)),  // olive
+        Color(uiColor: UIColor(hex: 0x243020)),  // forest
+        Color(uiColor: UIColor(hex: 0x33254A)),  // plum
+        Color(uiColor: UIColor(hex: 0x1A3340)),  // teal
+    ]
 
     // MARK: - Helpers
 

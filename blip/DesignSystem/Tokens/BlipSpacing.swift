@@ -11,4 +11,6 @@ enum BlipSpacing {
     static let buttonHeight:     CGFloat = 52
     static let textButtonHeight: CGFloat = 44
     static let tapTarget:        CGFloat = 44
+
+    static let avatarStroke:     CGFloat = 1.5
 }

@@ -1,33 +1,22 @@
 import Foundation
+import SwiftUI
 
 /// Business logic for HomeView. The view owns an instance as @StateObject
 /// and reads from it instead of computing inline.
 @MainActor
 final class HomeViewModel: ObservableObject {
 
-    // MARK: - Derived display helpers
+    // MARK: - Card data
 
-    func subtitle(for blip: Blip) -> String {
-        let n = blip.members.count
-        if n <= 1 { return "just you" }
-        return "\(n) members"
+    func cardColor(for blip: Blip) -> Color {
+        let index = abs(blip.id.hashValue) % BlipColor.cardPalette.count
+        return BlipColor.cardPalette[index]
     }
 
-    func progress(for blip: Blip) -> BlipCardProgress {
-        // `lastClipAt` and `unreadCount` are deferred — they require home-level
-        // clip aggregation (per plan's known-limitations note). For now the row
-        // still renders cleanly: trailing chevron + no timestamp.
-        BlipCardProgress(
-            hourCompletion: nil,
-            members: blip.members.map { uid in
-                BlipCardProgress.Member(
-                    id: uid,
-                    initials: String(uid.prefix(2)).uppercased(),
-                    hasPostedThisHour: false
-                )
-            },
-            secondsToNextPrompt: secondsUntilNextHour()
-        )
+    func cardMembers(for blip: Blip) -> [BlipCardMember] {
+        blip.members.map { uid in
+            BlipCardMember(id: uid, initials: String(uid.prefix(2)).uppercased())
+        }
     }
 
     func currentUid(from state: AuthState) -> String {
