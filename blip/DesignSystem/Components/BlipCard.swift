@@ -12,8 +12,8 @@ struct BlipCard: View {
     let members: [BlipCardMember]
 
     private static let cardHeight:       CGFloat = 110
-    private static let soloAvatarSize:   CGFloat = 48
-    private static let memberAvatarSize: CGFloat = 32
+    private static let soloAvatarSize:   CGFloat = 32
+    private static let memberAvatarSize: CGFloat = 24
 
     var body: some View {
         HStack(alignment: .center, spacing: BlipSpacing.sm) {
@@ -25,10 +25,10 @@ struct BlipCard: View {
             Spacer()
             memberCluster
         }
-        .padding(.horizontal, BlipSpacing.lg)
+        .padding(.horizontal, BlipSpacing.xl)
         .frame(maxWidth: .infinity)
         .frame(height: Self.cardHeight)
-        .background(cardColor, in: RoundedRectangle(cornerRadius: BlipRadius.lg, style: .continuous))
+        .background(cardColor, in: RoundedRectangle(cornerRadius: BlipRadius.md, style: .continuous))
     }
 
     @ViewBuilder

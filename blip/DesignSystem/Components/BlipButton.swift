@@ -113,7 +113,7 @@ struct BlipIconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(BlipTypography.body)
+                .font(BlipTypography.iconButton)
                 .foregroundStyle(iconColor)
                 .frame(width: BlipSpacing.tapTarget, height: BlipSpacing.tapTarget)
                 .background(background, in: RoundedRectangle(cornerRadius: BlipRadius.button, style: .continuous))

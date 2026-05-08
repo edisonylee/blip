@@ -109,10 +109,10 @@ enum BlipColor {
     /// Muted, dark background colors for blipchat cards. Picked by hashing the
     /// blip ID so each room gets a consistent color across sessions.
     static let cardPalette: [Color] = [
-        Color(uiColor: UIColor(hex: 0x2D3561)),  // navy
-        Color(uiColor: UIColor(hex: 0x3D1F1F)),  // maroon
-        Color(uiColor: UIColor(hex: 0x2B3320)),  // olive
-        Color(uiColor: UIColor(hex: 0x243020)),  // forest
+        Color(uiColor: UIColor(hex: 0x3C4869)),  // navy
+        Color(uiColor: UIColor(hex: 0x573D3D)),  // maroon
+        Color(uiColor: UIColor(hex: 0x4E4A39)),  // olive
+        Color(uiColor: UIColor(hex: 0x2B3B27)),  // forest
         Color(uiColor: UIColor(hex: 0x33254A)),  // plum
         Color(uiColor: UIColor(hex: 0x1A3340)),  // teal
     ]
