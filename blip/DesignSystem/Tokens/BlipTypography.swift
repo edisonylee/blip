@@ -13,8 +13,8 @@ enum BlipTypography {
 
     // font size
     private enum BlipFontSize {
-        static let sm: CGFloat = 13    
-        static let md: CGFloat = 16    // captions
+        static let sm: CGFloat = 13    // captions
+        static let md: CGFloat = 16
         static let lg: CGFloat = 20    // card headings
         static let xl: CGFloat = 36    // header, buttons
 
@@ -23,9 +23,10 @@ enum BlipTypography {
     }
 
     static let title     = Font.custom(Face.black,    size: BlipFontSize.xl)
+    static let medium    = Font.custom(Face.medium,   size: BlipFontSize.md)
     static let body      = Font.custom(Face.medium,   size: BlipFontSize.lg)
     static let cardTitle = Font.custom(Face.semibold, size: BlipFontSize.lg)
-    static let caption   = Font.custom(Face.medium,   size: BlipFontSize.md)
+    static let caption   = Font.custom(Face.medium,   size: BlipFontSize.sm)
     static let wordmark  = Font.custom(Face.black,    size: BlipFontSize.xl)
 
     /// Tracking applied at call sites for titles / card headings.

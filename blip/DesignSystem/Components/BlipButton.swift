@@ -172,7 +172,27 @@ private struct _IconButtonStyle: ButtonStyle {
             BlipIconButton(systemName: "ellipsis", style: .ghost) {}
         }
 
-        
+        HStack(spacing: BlipSpacing.lg) {
+            VStack(spacing: BlipSpacing.xxs) {
+                BlipIconButton(systemName: "bell", style: .light) {}
+                Text("Alerts")
+                    .font(BlipTypography.caption)
+                    .foregroundStyle(BlipColor.textSecondary)
+            }
+            VStack(spacing: BlipSpacing.xxs) {
+                BlipIconButton(systemName: "square.and.arrow.up", style: .light) {}
+                Text("Share")
+                    .font(BlipTypography.caption)
+                    .foregroundStyle(BlipColor.textSecondary)
+            }
+            VStack(spacing: BlipSpacing.xxs) {
+                BlipIconButton(systemName: "xmark", style: .light) {}
+                Text("Dismiss")
+                    .font(BlipTypography.caption)
+                    .foregroundStyle(BlipColor.textSecondary)
+            }
+        }
+
     }
     .padding(BlipSpacing.lg)
     .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -17,4 +17,7 @@ enum BlipMotion {
 
     /// Standard spring for tap/press feedback — snappy but not jarring.
     static let spring = Animation.spring(duration: 0.2)
+
+    /// Smooth ease-out for state transitions (e.g. focus changes).
+    static let easeOut = Animation.easeOut(duration: 0.2)
 }
