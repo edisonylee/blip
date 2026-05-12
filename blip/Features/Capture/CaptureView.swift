@@ -17,11 +17,48 @@ struct CaptureView: View {
     @State private var recordingURL: URL?
     /// Zoom factor at the start of the current pinch (committed when the gesture ends).
     @State private var baseZoom: CGFloat = 1.0
+    @State private var currentTime: String = Self.formattedTime()
 
     var body: some View {
         ZStack {
-            BlipColor.mediaBackdrop.ignoresSafeArea()
+            BlipColor.background.ignoresSafeArea()
 
+            VStack(spacing: 0) {
+                viewfinderArea
+                    .padding(BlipSpacing.lg)
+                    .frame(maxHeight: .infinity)
+                bottomToolbar
+            }
+        }
+        .navigationDestination(item: $recordingURL) { url in
+            ReviewView(blip: blip, fileURL: url, onPosted: onPosted)
+        }
+        .onAppear {
+            // Capture is landscape-native — sensor records 16:9 landscape, so we
+            // rotate the device to match. App-wide orientation is portrait
+            // otherwise; this gate flips the AppDelegate mask while we're on
+            // screen and `requestGeometryUpdate` actually performs the rotation.
+            AppDelegate.lockedOrientation = .landscape
+            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
+            }
+        }
+        .onDisappear {
+            session.stop()
+            AppDelegate.lockedOrientation = .portrait
+            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+            }
+        }
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+            currentTime = Self.formattedTime()
+        }
+    }
+
+    // MARK: - Viewfinder
+
+    private var viewfinderArea: some View {
+        ZStack {
             // Preview only renders for real cameras. Synthetic mode = no preview, just the record button.
             // Landscape 16:9 — fills the screen when the device is rotated to landscape (the
             // capture flow forces .landscapeRight; portrait fallback letterboxes).
@@ -50,110 +87,89 @@ struct CaptureView: View {
                         .font(.caption2.monospaced())
                         .foregroundStyle(.white.opacity(0.4))
                 }
-                .padding(.top, 88)
+                .padding(.top, 48)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .frame(maxHeight: .infinity, alignment: .top)
             }
             #endif
 
-            VStack {
-                topBar
-                Spacer()
-                statusOverlay
-                Spacer()
-                if !session.availableLenses.isEmpty && session.state == .ready {
-                    lensButtonRow
-                        .padding(.bottom, 12)
-                }
-                ZStack {
-                    recordButton
-                    if session.state == .recording {
-                        // Accent ring sweeps as the 2-second cap counts down.
-                        // sweepAngle = 360 at t=0, → 0 at the cap. trim() expects
-                        // start/end in 0…1 of the circle.
-                        Circle()
-                            .trim(from: 0, to: max(0, min(1, 1 - session.recordingElapsed / CaptureSession.clipDuration)))
-                            .stroke(BlipColor.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                            .frame(width: 84, height: 84)
-                            .rotationEffect(.degrees(-90))
-                            .animation(.linear(duration: 0.1), value: session.recordingElapsed)
-                            .allowsHitTesting(false)
-                    }
-                }
-                .padding(.bottom, 40)
-                .overlay(alignment: .top) {
-                    if session.state == .recording {
-                        let remaining = max(0, CaptureSession.clipDuration - session.recordingElapsed)
-                        Text("REC · \(String(format: "%.1f", remaining))s left")
-                            .font(.blip(size: 13, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(BlipColor.error, in: Capsule())
-                            .offset(y: -28)
-                            .allowsHitTesting(false)
-                    }
-                }
+            statusOverlay
+
+            if !session.availableLenses.isEmpty && session.state == .ready {
+                lensButtonRow
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, BlipSpacing.md)
+            }
+
+            if session.state == .ready || session.state == .recording {
+                Text(currentTime)
+                    .font(BlipTypography.clipTimestamp)
+                    .foregroundStyle(.white)
+                    .rotationEffect(.degrees(90))
             }
         }
-        .navigationDestination(item: $recordingURL) { url in
-            ReviewView(blip: blip, fileURL: url, onPosted: onPosted)
-        }
-        .onAppear {
-            // Capture is landscape-native — sensor records 16:9 landscape, so we
-            // rotate the device to match. App-wide orientation is portrait
-            // otherwise; this gate flips the AppDelegate mask while we're on
-            // screen and `requestGeometryUpdate` actually performs the rotation.
-            AppDelegate.lockedOrientation = .landscape
-            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
-            }
-        }
-        .onDisappear {
-            session.stop()
-            AppDelegate.lockedOrientation = .portrait
-            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
-            }
+        .background(BlipColor.mediaBackdrop)
+        .clipShape(RoundedRectangle(cornerRadius: BlipRadius.lg, style: .continuous))
+        .overlay(alignment: .topTrailing) {
+            BlipIconButton(systemName: "xmark", style: .dark) { dismiss() }
+                .padding(12)
         }
     }
 
-    private var topBar: some View {
+    // MARK: - Bottom toolbar
+
+    private var bottomToolbar: some View {
         HStack {
-            Button { dismiss() } label: {
-                Image(systemName: "xmark")
-                    .font(.title3)
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(.black.opacity(0.4), in: Circle())
+            Spacer()
+            BlipIconButton(systemName: "arrow.counterclockwise", style: .ghost) {}
+            Spacer()
+            BlipIconButton(systemName: "dial.medium", style: .ghost) {}
+            Spacer()
+            ZStack {
+                recordButton
+                if session.state == .recording {
+                    // Accent ring sweeps as the 2-second cap counts down.
+                    // sweepAngle = 360 at t=0, → 0 at the cap. trim() expects
+                    // start/end in 0…1 of the circle.
+                    Circle()
+                        .trim(from: 0, to: max(0, min(1, 1 - session.recordingElapsed / CaptureSession.clipDuration)))
+                        .stroke(BlipColor.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .frame(width: 84, height: 84)
+                        .rotationEffect(.degrees(-90))
+                        .animation(.linear(duration: 0.1), value: session.recordingElapsed)
+                        .allowsHitTesting(false)
+                }
             }
-            .accessibilityLabel("close")
+            .overlay(alignment: .top) {
+                if session.state == .recording {
+                    let remaining = max(0, CaptureSession.clipDuration - session.recordingElapsed)
+                    Text("REC · \(String(format: "%.1f", remaining))s left")
+                        .font(.blip(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, BlipSpacing.md)
+                        .padding(.vertical, BlipSpacing.xs)
+                        .background(BlipColor.error, in: Capsule())
+                        .offset(y: -28)
+                        .allowsHitTesting(false)
+                }
+            }
             Spacer()
-            Text(blip.name)
-                .font(BlipTypography.body)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(.black.opacity(0.4), in: Capsule())
+            BlipIconButton(systemName: "bolt", style: .ghost) {}
             Spacer()
-            Button {
+            BlipIconButton(systemName: "arrow.2.circlepath", style: .ghost) {
                 Task { await session.flipCamera() }
-            } label: {
-                Image(systemName: "arrow.triangle.2.circlepath.camera")
-                    .font(.title3)
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(.black.opacity(0.4), in: Circle())
             }
-            .accessibilityLabel("flip camera")
             .disabled(session.state == .recording)
+            Spacer()
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .frame(height: 80)
+        .background(BlipColor.background)
     }
+
+    // MARK: - Lens row
 
     private var lensButtonRow: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: BlipSpacing.sm) {
             ForEach(session.availableLenses) { lens in
                 Button {
                     session.setZoom(factor: lens.zoomFactor, ramped: true)
@@ -162,9 +178,9 @@ struct CaptureView: View {
                     Text(lens.label)
                         .font(.blip(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
+                        .frame(width: BlipSpacing.tapTarget, height: BlipSpacing.tapTarget)
                         .background(
-                            isActive(lens) ? .white.opacity(0.18) : .black.opacity(0.4),
+                            isActive(lens) ? .white.opacity(0.18) : BlipColor.surface,
                             in: Circle()
                         )
                         .overlay(
@@ -188,11 +204,13 @@ struct CaptureView: View {
         return nearest.id == lens.id
     }
 
+    // MARK: - Status overlay
+
     @ViewBuilder
     private var statusOverlay: some View {
         switch session.state {
         case .idle:
-            VStack(spacing: 8) {
+            VStack(spacing: BlipSpacing.sm) {
                 Text("tap to capture")
                     .font(BlipTypography.title)
                     .foregroundStyle(.white)
@@ -201,7 +219,7 @@ struct CaptureView: View {
                     .foregroundStyle(.white.opacity(0.7))
             }
         case .denied:
-            VStack(spacing: 8) {
+            VStack(spacing: BlipSpacing.sm) {
                 Text("camera + mic access needed")
                     .font(BlipTypography.body)
                     .foregroundStyle(.white)
@@ -218,16 +236,18 @@ struct CaptureView: View {
                 .font(BlipTypography.caption)
                 .foregroundStyle(.white.opacity(0.6))
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+                .padding(.horizontal, BlipSpacing.xxl)
         case .error(let msg):
             Text(msg)
                 .font(BlipTypography.caption)
                 .foregroundStyle(BlipColor.error)
-                .padding(.horizontal, 32)
+                .padding(.horizontal, BlipSpacing.xxl)
         case .ready, .recording:
             EmptyView()
         }
     }
+
+    // MARK: - Record button
 
     private var recordButton: some View {
         Button {
@@ -276,6 +296,12 @@ struct CaptureView: View {
         } catch {
             // Surface error in the overlay via state — the session already moved to .error or .ready.
         }
+    }
+
+    private static func formattedTime() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "h:mm a"
+        return f.string(from: Date()).lowercased()
     }
 }
 
