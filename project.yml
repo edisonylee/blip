@@ -30,6 +30,9 @@ targets:
         excludes:
           - "**/.DS_Store"
           - "Resources/geist-font-*/**"
+    resources:
+      - path: blip/Resources/Fonts
+      - path: blip/Resources/Assets.xcassets
     info:
       path: blip/Resources/Info.plist
       properties:
@@ -41,12 +44,14 @@ targets:
         NSMicrophoneUsageDescription: "blip uses your microphone so your clips have sound."
         NSPhotoLibraryAddUsageDescription: "Save the day's stitched vlog to your photos."
         UIAppFonts:
-          - Fonts/Geist-Light.otf
-          - Fonts/Geist-Regular.otf
-          - Fonts/Geist-Medium.otf
-          - Fonts/Geist-SemiBold.otf
-          - Fonts/Geist-Bold.otf
-          - Fonts/Geist-Black.otf
+          - Manrope-ExtraLight.ttf
+          - Manrope-Light.ttf
+          - Manrope-Regular.ttf
+          - Manrope-Medium.ttf
+          - Manrope-SemiBold.ttf
+          - Manrope-Bold.ttf
+          - Manrope-ExtraBold.ttf
+          - Judson-Bold.ttf
         UILaunchScreen:
           UIColorName: ""
         UISupportedInterfaceOrientations:

@@ -130,7 +130,7 @@ struct HomeView: View {
             VStack(spacing: 24) {
                 VStack(spacing: 8) {
                     Text("who's in your day?")
-                        .font(.blip(size: 26, weight: .bold, design: .rounded))
+                        .font(BlipTypography.title)
                         .foregroundStyle(BlipColor.textPrimary)
                     Text("start a blip with friends — every hour,\nyou each post 2 seconds of your day.")
                         .font(BlipTypography.body)
@@ -157,23 +157,16 @@ struct HomeView: View {
 
     private var blipList: some View {
         ScrollView(showsIndicators: false) {
-            LazyVStack(spacing: 0) {
-                ForEach(Array(repo.blips.enumerated()), id: \.element.id) { index, blip in
+            LazyVStack(spacing: BlipSpacing.sm) {
+                ForEach(repo.blips) { blip in
                     NavigationLink(value: blip) {
                         BlipCard(
                             title: blip.name,
-                            subtitle: vm.subtitle(for: blip),
-                            memberCount: blip.members.count,
-                            progress: vm.progress(for: blip)
+                            cardColor: vm.cardColor(for: blip),
+                            members: vm.cardMembers(for: blip)
                         )
                     }
                     .buttonStyle(.plain)
-
-                    if index < repo.blips.count - 1 {
-                        Divider()
-                            .background(BlipColor.border)
-                            .padding(.leading, 64) // align under name, iMessage-style
-                    }
                 }
             }
             .padding(.horizontal, 20)

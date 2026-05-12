@@ -38,6 +38,12 @@ struct ClipTimestampLabel: View {
     }
 }
 
+#Preview {
+    ClipTimestampLabel(hour: 17)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(white: 0.2))
+}
+
 extension ClipTimestampLabel {
     /// Convenience for the live "now" overlay on the review screen.
     static func now(date: Date = Date()) -> ClipTimestampLabel {
