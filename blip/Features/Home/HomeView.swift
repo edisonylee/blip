@@ -14,9 +14,22 @@ struct HomeView: View {
     @State private var pendingCaptureBlip: Blip?
     @State private var showGlobalCapture = false
     @State private var showReferralShare = false
-    @State private var activeTab: Tab = .blips
+    @State private var activeTab: BlipTabBar.Tab = .home
 
-    enum Tab { case camera, blips, profile }
+    /// Intercepts camera taps so they launch the capture sheet instead of
+    /// switching pages — camera has never been a swipe page.
+    private var tabBarSelection: Binding<BlipTabBar.Tab> {
+        Binding(
+            get: { activeTab },
+            set: { tab in
+                if tab == .camera {
+                    showGlobalCapture = true
+                } else {
+                    withAnimation(.easeOut(duration: 0.2)) { activeTab = tab }
+                }
+            }
+        )
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -24,27 +37,20 @@ struct HomeView: View {
                 BlipColor.background.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    // Home header (wordmark + plus) is blips-only chrome —
-                    // the profile tab owns its own top bar (wordmark + share +
-                    // overflow), so hide this when profile is active.
                     if activeTab != .profile {
-                        HomeHeader(
-                            onPlus: { showPlusMenu = true }
+                        BlipHomeHeader(
+                            onPlus: { showPlusMenu = true },
+                            onBell: {}
                         )
-                        .padding(.top, 8)
+                        .padding(.top, BlipSpacing.sm)
+                        .padding(.bottom, BlipSpacing.lg)
                     }
 
-                    // Two swipe pages — blips (default) and profile. Camera is
-                    // a tap-to-launch button on the bottom toggle, not a page,
-                    // so the existing fullScreenCover capture flow stays intact.
                     TabView(selection: $activeTab) {
-                        blipsPage.tag(Tab.blips)
-                        ProfileView().tag(Tab.profile)
+                        blipsPage.tag(BlipTabBar.Tab.home)
+                        ProfileView().tag(BlipTabBar.Tab.profile)
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-
-                    BottomToggle(active: $activeTab, onCamera: handleCameraTab)
-                        .padding(.bottom, 20)
                 }
 
                 if showPlusMenu {
@@ -68,9 +74,7 @@ struct HomeView: View {
                 }
 
                 #if DEBUG
-                if activeTab != .profile {
-                    debugBadge
-                }
+                if activeTab != .profile { debugBadge }
                 #endif
             }
             .navigationDestination(for: Blip.self) { blip in
@@ -100,6 +104,9 @@ struct HomeView: View {
                     .environmentObject(repo)
                 }
             }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            BlipTabBar(selection: tabBarSelection)
         }
         .onChange(of: deepLinks.pending) { _, action in handle(action) }
         .onAppear { handle(deepLinks.pending) }
@@ -169,19 +176,10 @@ struct HomeView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 12)
+            .padding(.horizontal, BlipSpacing.lg)
+            .padding(.top, BlipSpacing.xs)
+            .padding(.bottom, BlipSpacing.sm)
         }
-    }
-
-    // MARK: - Camera tab
-
-    private func handleCameraTab() {
-        // Snapchat-style global capture: always opens the camera surface.
-        // Empty-blip users still record — the picker shows an empty state
-        // prompting them to start a blip first.
-        showGlobalCapture = true
     }
 
     // MARK: - Debug badge (debug builds only)
@@ -267,73 +265,6 @@ private enum CreationDestination: String, Identifiable {
     var id: String { rawValue }
 }
 
-// MARK: - Header
-
-private struct HomeHeader: View {
-    let onPlus: () -> Void
-
-    var body: some View {
-        HStack {
-            Spacer()
-            Button(action: onPlus) {
-                Image(systemName: "plus")
-                    .font(.blip(size: 18, weight: .semibold))
-                    .foregroundStyle(BlipColor.textPrimary)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .background(BlipColor.surface, in: Circle())
-            }
-            .accessibilityLabel("create or join a blip")
-        }
-        .padding(.horizontal, 16)
-    }
-}
-
-// MARK: - Bottom tab toggle
-
-private struct BottomToggle: View {
-    @Binding var active: HomeView.Tab
-    let onCamera: () -> Void
-
-    private static let buttonWidth: CGFloat = 90
-    private static let height: CGFloat = 40
-
-    var body: some View {
-        HStack(spacing: 0) {
-            // Camera doesn't paginate — it launches the global capture sheet.
-            // Tap selects it visually for the moment of action and then the
-            // sheet takes over; the page selection itself stays on whatever
-            // page the user was on so swiping back lands where they left off.
-            tabButton(label: "camera", tab: .camera) {
-                onCamera()
-            }
-            tabButton(label: "blips", tab: .blips) {
-                withAnimation(.easeOut(duration: 0.2)) { active = .blips }
-            }
-            tabButton(label: "profile", tab: .profile) {
-                withAnimation(.easeOut(duration: 0.2)) { active = .profile }
-            }
-        }
-        .frame(width: Self.buttonWidth * 3, height: Self.height)
-        .background(BlipColor.surface, in: Capsule())
-    }
-
-    private func tabButton(label: String, tab: HomeView.Tab, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.blip(size: 14, weight: active == tab ? .semibold : .regular))
-                .foregroundStyle(active == tab ? BlipColor.textPrimary : BlipColor.textTertiary)
-                .frame(maxWidth: .infinity)
-                .frame(height: Self.height)
-                .background(
-                    active == tab
-                        ? BlipColor.surfaceElevated.clipShape(Capsule())
-                        : nil
-                )
-                .animation(.spring(duration: 0.25), value: active)
-        }
-        .buttonStyle(.plain)
-    }
-}
 
 #Preview {
     HomeView()

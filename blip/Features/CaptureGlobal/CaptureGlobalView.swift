@@ -24,6 +24,7 @@ struct CaptureGlobalView: View {
     @StateObject private var vm: CaptureGlobalViewModel
 
     @State private var showPicker = false
+    @State private var currentTime: String = Self.formattedTime()
 
     // MARK: - Layout constants
 
@@ -31,10 +32,6 @@ struct CaptureGlobalView: View {
     private static let recordButtonInnerIdle: CGFloat = 68
     private static let recordButtonInnerRec: CGFloat = 36
     private static let recordButtonStroke: CGFloat = 4
-    private static let dismissButtonSize: CGFloat = 44
-    private static let dismissIconBackgroundSize: CGFloat = 36
-    private static let recordBottomPadding: CGFloat = 40
-    private static let aspectLandscape: CGFloat = 16.0 / 9.0
     private static let recordButtonAnimationDuration: Double = 0.2
 
     init(uid: String, uploader: any ClipUploading, onSent: @escaping () -> Void) {
@@ -47,16 +44,13 @@ struct CaptureGlobalView: View {
 
     var body: some View {
         ZStack {
-            BlipColor.mediaBackdrop.ignoresSafeArea()
-            cameraSurface
+            BlipColor.background.ignoresSafeArea()
 
-            VStack {
-                topBar
-                Spacer()
-                statusOverlay
-                Spacer()
-                recordButton
-                    .padding(.bottom, Self.recordBottomPadding)
+            VStack(spacing: 0) {
+                viewfinderArea
+                    .padding(BlipSpacing.lg)
+                    .frame(maxHeight: .infinity)
+                bottomToolbar
             }
         }
         .preferredColorScheme(.dark)
@@ -78,16 +72,40 @@ struct CaptureGlobalView: View {
             .presentationDetents([.large])
             .interactiveDismissDisabled(vm.isSending)
         }
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
+            currentTime = Self.formattedTime()
+        }
     }
 
-    // MARK: - Subviews
+    // MARK: - Viewfinder
+
+    private var viewfinderArea: some View {
+        ZStack {
+            cameraSurface
+            statusOverlay
+
+            if session.state == .ready || session.state == .recording {
+                Text(currentTime)
+                    .font(BlipTypography.clipTimestamp)
+                    .foregroundStyle(.white)
+                    .rotationEffect(.degrees(90))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(BlipColor.mediaBackdrop)
+        .clipShape(RoundedRectangle(cornerRadius: BlipRadius.lg, style: .continuous))
+        .overlay(alignment: .topTrailing) {
+            BlipIconButton(systemName: "xmark", style: .dark) { dismiss() }
+                .padding(12)
+        }
+    }
 
     @ViewBuilder
     private var cameraSurface: some View {
         // Preview only renders for real cameras. Synthetic mode = no preview, just the record button.
         if !session.useSynthetic && (session.state == .ready || session.state == .recording) {
             CapturePreview(session: session.session)
-                .aspectRatio(Self.aspectLandscape, contentMode: .fit)
+                .aspectRatio(16.0 / 9.0, contentMode: .fit)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
 
@@ -101,59 +119,46 @@ struct CaptureGlobalView: View {
                     .font(.blip(size: 11, design: .monospaced))
                     .foregroundStyle(BlipColor.textPrimary.opacity(0.4))
             }
-            .padding(.top, 88)
+            .padding(.top, 48)
             .frame(maxWidth: .infinity, alignment: .center)
             .frame(maxHeight: .infinity, alignment: .top)
         }
         #endif
     }
 
-    private var topBar: some View {
+    // MARK: - Bottom toolbar
+
+    private var bottomToolbar: some View {
         HStack {
-            Button { dismiss() } label: {
-                ZStack {
-                    Circle()
-                        .fill(BlipColor.surface.opacity(0.4))
-                        .frame(width: Self.dismissIconBackgroundSize, height: Self.dismissIconBackgroundSize)
-                    Image(systemName: "xmark")
-                        .font(BlipTypography.body)
-                        .foregroundStyle(BlipColor.textPrimary)
-                }
-                .frame(minWidth: Self.dismissButtonSize, minHeight: Self.dismissButtonSize)
-            }
-            .accessibilityLabel("close camera")
-
             Spacer()
-
-            Text("camera")
-                .font(BlipTypography.body)
-                .foregroundStyle(BlipColor.textPrimary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(BlipColor.surface.opacity(0.4), in: Capsule())
-
+            BlipIconButton(systemName: "timer", style: .dark) {}
             Spacer()
-
-            Color.clear.frame(width: Self.dismissButtonSize, height: Self.dismissButtonSize)
+            BlipIconButton(systemName: "dial.medium", style: .dark) {}
+            Spacer()
+            recordButton
+            Spacer()
+            BlipIconButton(systemName: "bolt", style: .dark) {}
+            Spacer()
+            BlipIconButton(systemName: "arrow.2.circlepath", style: .dark) {}
+            Spacer()
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .frame(height: 80)
+        .background(BlipColor.background)
     }
+
+    // MARK: - Status overlay
 
     @ViewBuilder
     private var statusOverlay: some View {
         switch session.state {
         case .idle:
-            VStack(spacing: 8) {
+            VStack(spacing: BlipSpacing.sm) {
                 Text("tap to record")
                     .font(BlipTypography.title)
                     .foregroundStyle(BlipColor.textPrimary)
-                Text("a 2s clip — pick who sees it next")
-                    .font(BlipTypography.caption)
-                    .foregroundStyle(BlipColor.textPrimary.opacity(0.7))
             }
         case .denied:
-            VStack(spacing: 8) {
+            VStack(spacing: BlipSpacing.sm) {
                 Text("camera + mic access needed")
                     .font(BlipTypography.body)
                     .foregroundStyle(BlipColor.textPrimary)
@@ -170,16 +175,18 @@ struct CaptureGlobalView: View {
                 .font(BlipTypography.caption)
                 .foregroundStyle(BlipColor.textPrimary.opacity(0.6))
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+                .padding(.horizontal, BlipSpacing.xxl)
         case .error(let msg):
             Text(msg)
                 .font(BlipTypography.caption)
                 .foregroundStyle(BlipColor.error)
-                .padding(.horizontal, 32)
+                .padding(.horizontal, BlipSpacing.xxl)
         case .ready, .recording:
             EmptyView()
         }
     }
+
+    // MARK: - Record button
 
     private var recordButton: some View {
         Button {
@@ -197,7 +204,7 @@ struct CaptureGlobalView: View {
                     )
                     .animation(.easeInOut(duration: Self.recordButtonAnimationDuration), value: session.state)
             }
-            .frame(minWidth: 44, minHeight: 44)
+            .frame(minWidth: BlipSpacing.tapTarget, minHeight: BlipSpacing.tapTarget)
         }
         .accessibilityLabel(session.state == .recording ? "recording" : "record")
         .disabled(disableRecord)
@@ -252,5 +259,11 @@ struct CaptureGlobalView: View {
                 onSent()
             }
         }
+    }
+
+    private static func formattedTime() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "h:mm a"
+        return f.string(from: Date()).lowercased()
     }
 }

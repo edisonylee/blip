@@ -2,8 +2,8 @@ import SwiftUI
 
 struct ProfileHeader: View {
     let username: String
-    let onShare: () -> Void
-    let onSettings: () -> Void
+    let onShareProfile: () -> Void
+    let onEditProfile: () -> Void
 
     var body: some View {
         HStack {
@@ -12,8 +12,8 @@ struct ProfileHeader: View {
                 .foregroundStyle(BlipColor.textPrimary)
             Spacer()
             HStack(spacing: BlipSpacing.sm) {
-                BlipIconButton(systemName: "square.and.arrow.up", style: .dark, action: onShare)
-                BlipIconButton(systemName: "gearshape",           style: .dark, action: onSettings)
+                BlipIconButton(systemName: "square.and.arrow.up", style: .light, action: onShareProfile)
+                BlipIconButton(systemName: "gearshape",           style: .light, action: onEditProfile)
             }
         }
         .padding(.horizontal, BlipSpacing.lg)
@@ -22,7 +22,7 @@ struct ProfileHeader: View {
 }
 
 #Preview {
-    ProfileHeader(username: "eric", onShare: {}, onSettings: {})
+    ProfileHeader(username: "eirocw", onShareProfile: {}, onEditProfile: {})
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(BlipColor.background)
         .preferredColorScheme(.dark)
