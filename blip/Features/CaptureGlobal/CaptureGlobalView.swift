@@ -132,14 +132,19 @@ struct CaptureGlobalView: View {
         HStack {
             Spacer()
             BlipIconButton(systemName: "timer", style: .dark) {}
+                .rotationEffect(.degrees(90))
             Spacer()
             BlipIconButton(systemName: "dial.medium", style: .dark) {}
+                .rotationEffect(.degrees(90))
             Spacer()
             recordButton
+                .rotationEffect(.degrees(90))
             Spacer()
             BlipIconButton(systemName: "bolt", style: .dark) {}
+                .rotationEffect(.degrees(90))
             Spacer()
             BlipIconButton(systemName: "arrow.2.circlepath", style: .dark) {}
+                .rotationEffect(.degrees(90))
             Spacer()
         }
         .frame(height: 80)
@@ -156,6 +161,7 @@ struct CaptureGlobalView: View {
                 Text("tap to record")
                     .font(BlipTypography.title)
                     .foregroundStyle(BlipColor.textPrimary)
+                    .rotationEffect(.degrees(90))
             }
         case .denied:
             VStack(spacing: BlipSpacing.sm) {
