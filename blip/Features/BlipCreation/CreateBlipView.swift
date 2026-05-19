@@ -14,9 +14,9 @@ struct CreateBlipView: View {
                 BlipColor.background.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    header
-                    Spacer()
+                    CreateHeader(onDismiss: { dismiss() }, onConfirm: submit)
                     content
+                        .padding(.top, BlipSpacing.xxl)
                     Spacer()
                     footer
                 }
@@ -24,42 +24,15 @@ struct CreateBlipView: View {
             .navigationDestination(item: $vm.createdBlip) { blip in
                 BlipCreatedView(blip: blip) { dismiss() }
             }
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark")
-                            .font(.blip(size: 16, weight: .medium))
-                            .foregroundStyle(BlipColor.textSecondary)
-                    }
-                    .accessibilityLabel("Close")
-                }
-            }
-            .toolbarBackground(BlipColor.background, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
         }
         .onAppear { nameFocused = true }
     }
 
-    // MARK: - Header
-
-    private var header: some View {
-        VStack(spacing: 6) {
-            Text("name your crew")
-                .font(.blip(size: 28, weight: .black, design: .rounded))
-                .foregroundStyle(BlipColor.textPrimary)
-            Text("pick a name and how many people can join")
-                .font(.blip(size: 14))
-                .foregroundStyle(BlipColor.textTertiary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(.top, 32)
-        .padding(.horizontal, 24)
-    }
-
-    // MARK: - Name + size
+    // MARK: - Content
 
     private var content: some View {
-        VStack(spacing: 28) {
-            // Name field
+        VStack(spacing: BlipSpacing.xxl) {
             BlipTextField(
                 label: "blip name",
                 placeholder: "summer squad, study crew…",
@@ -67,107 +40,120 @@ struct CreateBlipView: View {
                 isFocused: $nameFocused
             )
 
-            // Size picker
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("group size")
-                        .font(.blip(size: 11, weight: .semibold))
-                        .foregroundStyle(BlipColor.textTertiary)
-                        .textCase(.uppercase)
-                        .tracking(0.8)
-                    Spacer()
-                    Text(vm.sizeDescription(vm.size))
-                        .font(.blip(size: 13))
-                        .foregroundStyle(BlipColor.textPrimary)
-                        .animation(.easeOut(duration: 0.15), value: vm.size)
-                }
+            sizePicker
+            timezonePicker
+        }
+        .padding(.horizontal, BlipSpacing.xl)
+    }
 
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
-                    ForEach(vm.sizeOptions, id: \.self) { n in
-                        Button {
-                            withAnimation(.spring(duration: 0.2)) { vm.size = n }
-                        } label: {
-                            Text("\(n)")
-                                .font(.blip(size: 15, weight: .semibold))
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                                .background(
-                                    vm.size == n ? BlipColor.accentNeutral : BlipColor.surface,
-                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                )
-                                .foregroundStyle(vm.size == n ? BlipColor.accentNeutralOn : BlipColor.textSecondary)
-                                .scaleEffect(vm.size == n ? 1.05 : 1)
-                                .animation(.spring(duration: 0.2), value: vm.size)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+    // MARK: - Size picker
+
+    private var sizePicker: some View {
+        VStack(alignment: .leading, spacing: BlipSpacing.md) {
+            HStack {
+                Text("group size")
+                    .font(.blip(size: 11, weight: .semibold))
+                    .foregroundStyle(BlipColor.textTertiary)
+                    .textCase(.uppercase)
+                    .tracking(0.8)
+                Spacer()
+                Text(vm.sizeDescription(vm.size))
+                    .font(BlipTypography.caption)
+                    .foregroundStyle(BlipColor.textPrimary)
+                    .animation(BlipMotion.spring, value: vm.size)
             }
 
-            // Timezone picker — defaults to the creator's TZ. The day boundary
-            // (4AM in this zone) is fixed at create time per CLAUDE.md and used
-            // by the export stitch. Surface explicitly so a user travelling or
-            // sharing across zones can pin the group's anchor.
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("day starts 4am")
-                        .font(.blip(size: 11, weight: .semibold))
-                        .foregroundStyle(BlipColor.textTertiary)
-                        .textCase(.uppercase)
-                        .tracking(0.8)
-                    Spacer()
-                    Text(vm.timezoneShortName(vm.timezoneIdentifier))
-                        .font(.blip(size: 13))
-                        .foregroundStyle(BlipColor.textPrimary)
-                        .animation(.easeOut(duration: 0.15), value: vm.timezoneIdentifier)
-                }
-
-                Menu {
-                    Picker("timezone", selection: $vm.timezoneIdentifier) {
-                        ForEach(vm.timezoneOptions, id: \.self) { tz in
-                            Text(vm.timezoneShortName(tz)).tag(tz)
-                        }
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(), spacing: BlipSpacing.sm), count: 6),
+                spacing: BlipSpacing.sm
+            ) {
+                ForEach(vm.sizeOptions, id: \.self) { n in
+                    Button {
+                        withAnimation(BlipMotion.spring) { vm.size = n }
+                    } label: {
+                        Text("\(n)")
+                            .font(.blip(size: 15, weight: .semibold))
+                            .frame(maxWidth: .infinity, minHeight: BlipSpacing.tapTarget)
+                            .background(
+                                vm.size == n ? BlipColor.textPrimary : BlipColor.surface,
+                                in: RoundedRectangle(cornerRadius: BlipRadius.sm, style: .continuous)
+                            )
+                            .foregroundStyle(vm.size == n ? BlipColor.background : BlipColor.textSecondary)
+                            .scaleEffect(vm.size == n ? 1.05 : 1)
+                            .animation(BlipMotion.spring, value: vm.size)
                     }
-                } label: {
-                    HStack {
-                        Text(vm.timezoneIdentifier.replacingOccurrences(of: "_", with: " "))
-                            .font(.blip(size: 15, weight: .medium))
-                            .foregroundStyle(BlipColor.textPrimary)
-                            .lineLimit(1)
-                        Spacer()
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption)
-                            .foregroundStyle(BlipColor.textTertiary)
-                    }
-                    .frame(minHeight: 44)
-                    .padding(.horizontal, 16)
-                    .background(
-                        BlipColor.surface,
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
+                    .buttonStyle(.plain)
                 }
-                .accessibilityLabel("change timezone")
             }
         }
-        .padding(.horizontal, 24)
+    }
+
+    // MARK: - Timezone picker
+
+    private var timezonePicker: some View {
+        VStack(alignment: .leading, spacing: BlipSpacing.md) {
+            HStack {
+                Text("day starts 4am")
+                    .font(.blip(size: 11, weight: .semibold))
+                    .foregroundStyle(BlipColor.textTertiary)
+                    .textCase(.uppercase)
+                    .tracking(0.8)
+                Spacer()
+                Text(vm.timezoneShortName(vm.timezoneIdentifier))
+                    .font(BlipTypography.caption)
+                    .foregroundStyle(BlipColor.textPrimary)
+                    .animation(BlipMotion.spring, value: vm.timezoneIdentifier)
+            }
+
+            Menu {
+                Picker("timezone", selection: $vm.timezoneIdentifier) {
+                    ForEach(vm.timezoneOptions, id: \.self) { tz in
+                        Text(vm.timezoneShortName(tz)).tag(tz)
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(vm.timezoneIdentifier.replacingOccurrences(of: "_", with: " "))
+                        .font(.blip(size: 15, weight: .medium))
+                        .foregroundStyle(BlipColor.textPrimary)
+                        .lineLimit(1)
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(BlipColor.textTertiary)
+                }
+                .frame(minHeight: BlipSpacing.tapTarget)
+                .padding(.horizontal, BlipSpacing.lg)
+                .background(
+                    BlipColor.surface,
+                    in: RoundedRectangle(cornerRadius: BlipRadius.sm, style: .continuous)
+                )
+            }
+            .accessibilityLabel("change timezone")
+        }
     }
 
     // MARK: - Footer
 
     private var footer: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: BlipSpacing.md) {
             ErrorText(message: vm.errorMessage)
 
-            Button("create blip") {
-                nameFocused = false
-                guard case .signedIn(let uid) = auth.state else { return }
-                vm.submit(uid: uid, repo: repo)
-            }
-            .blipPrimary(isLoading: vm.isSubmitting)
-            .disabled(!vm.isFormValid || vm.isSubmitting)
-            .opacity(vm.isFormValid ? 1 : 0.4)
-            .padding(.horizontal, 24)
+            Button("create blip", action: submit)
+                .blipPrimary(isLoading: vm.isSubmitting)
+                .disabled(!vm.isFormValid || vm.isSubmitting)
+                .opacity(vm.isFormValid ? 1 : 0.4)
+                .padding(.horizontal, BlipSpacing.xl)
         }
-        .padding(.bottom, 32)
+        .padding(.bottom, BlipSpacing.xxl)
+    }
+
+    // MARK: - Actions
+
+    private func submit() {
+        nameFocused = false
+        guard case .signedIn(let uid) = auth.state else { return }
+        vm.submit(uid: uid, repo: repo)
     }
 }
 

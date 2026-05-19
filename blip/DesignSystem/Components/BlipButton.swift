@@ -13,16 +13,16 @@ struct BlipPrimaryButtonStyle: ButtonStyle {
             configuration.label
                 .font(BlipTypography.body)
                 .tracking(BlipTypography.titleTracking)
-                .foregroundStyle(BlipColor.accentNeutralOn)
+                .foregroundStyle(BlipColor.background)
                 .opacity(isLoading ? 0 : 1)
             if isLoading {
-                ProgressView().tint(BlipColor.accentNeutralOn)
+                ProgressView().tint(BlipColor.background)
             }
         }
         .frame(maxWidth: .infinity)
         .frame(height: BlipSpacing.buttonHeight)
         .background(
-            BlipColor.accentNeutral,
+            BlipColor.textPrimary,
             in: RoundedRectangle(cornerRadius: BlipRadius.button, style: .continuous)
         )
         .scaleEffect(configuration.isPressed ? BlipMotion.pressScaleButton : 1)
