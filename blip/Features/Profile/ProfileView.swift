@@ -70,7 +70,7 @@ private struct ProfileContent: View {
                 ProfileHeader(
                     username: wordmarkText,
                     onShareProfile: { showShareSheet = true },
-                    onEditProfile: { showSettings = true }
+                    onEditProfile: { showHandleSheet = true }
                 )
 
                 ScrollView {
