@@ -31,6 +31,26 @@ final class FriendsRepository: ObservableObject, FriendsRepositoryProtocol {
     @Published private(set) var friends: [String] = []
     @Published private(set) var lastError: String?
 
+    /// Raw state from Firestore before block filtering. Kept so we can re-derive
+    /// the published lists when the blocklist changes without re-listening.
+    private var rawIncoming: [FriendRequest] = []
+    private var rawOutgoing: [FriendRequest] = []
+    private var rawFriends: [String] = []
+    private var blockedUsers: Set<String> = []
+
+    /// Push the current blocklist in. App-level wiring should call from
+    /// `.onReceive(moderation.$blockedUsers)`.
+    func setBlocklist(_ uids: Set<String>) {
+        blockedUsers = uids
+        recomputeFiltered()
+    }
+
+    private func recomputeFiltered() {
+        incomingRequests = rawIncoming.filter { !blockedUsers.contains($0.fromUid) }
+        outgoingRequests = rawOutgoing.filter { !blockedUsers.contains($0.toUid) }
+        friends = rawFriends.filter { !blockedUsers.contains($0) }
+    }
+
     // MARK: - Dependencies
 
     private let db = Firestore.firestore()
@@ -62,7 +82,8 @@ final class FriendsRepository: ObservableObject, FriendsRepositoryProtocol {
                         return
                     }
                     let docs = snapshot?.documents ?? []
-                    self.incomingRequests = docs.compactMap { Self.decodeRequest(doc: $0) }
+                    self.rawIncoming = docs.compactMap { Self.decodeRequest(doc: $0) }
+                    self.incomingRequests = self.rawIncoming.filter { !self.blockedUsers.contains($0.fromUid) }
                 }
             }
 
@@ -78,7 +99,8 @@ final class FriendsRepository: ObservableObject, FriendsRepositoryProtocol {
                         return
                     }
                     let docs = snapshot?.documents ?? []
-                    self.outgoingRequests = docs.compactMap { Self.decodeRequest(doc: $0) }
+                    self.rawOutgoing = docs.compactMap { Self.decodeRequest(doc: $0) }
+                    self.outgoingRequests = self.rawOutgoing.filter { !self.blockedUsers.contains($0.toUid) }
                 }
             }
 
@@ -93,7 +115,8 @@ final class FriendsRepository: ObservableObject, FriendsRepositoryProtocol {
                         return
                     }
                     let docs = snapshot?.documents ?? []
-                    self.friends = docs.compactMap { $0.data()[Self.uidField] as? String }
+                    self.rawFriends = docs.compactMap { $0.data()[Self.uidField] as? String }
+                    self.friends = self.rawFriends.filter { !self.blockedUsers.contains($0) }
                 }
             }
     }
@@ -105,6 +128,9 @@ final class FriendsRepository: ObservableObject, FriendsRepositoryProtocol {
         incomingListener = nil
         outgoingListener = nil
         friendsListener = nil
+        rawIncoming = []
+        rawOutgoing = []
+        rawFriends = []
         incomingRequests = []
         outgoingRequests = []
         friends = []

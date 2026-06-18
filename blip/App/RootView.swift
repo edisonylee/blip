@@ -30,14 +30,16 @@ struct RootView: View {
     private var authedBody: some View {
         switch auth.state {
         case .loading:
-            ProgressView()
-                .controlSize(.large)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(BlipColor.background)
+            loadingShell
         case .signedOut:
             OnboardingView()
         case .signedIn(let uid):
-            HomeView()
+            // The user-doc listener publishes `users.profile` asynchronously.
+            // Until the first snapshot lands we render a spinner — that's also
+            // why `ensureUserDoc` runs in `.task(id:)` rather than blocking
+            // routing. Once the profile is available we gate on `handle`:
+            // nil/empty → claim screen, populated → Home.
+            authedRouting(uid: uid)
                 .task(id: uid) {
                     // Consume any referrer uid stashed by an invite deep link
                     // before signup. `ensureUserDoc` only honours it on first
@@ -51,6 +53,26 @@ struct RootView: View {
                     friendsRepo.startListening(for: uid)
                 }
         }
+    }
+
+    @ViewBuilder
+    private func authedRouting(uid: String) -> some View {
+        if let profile = users.profile {
+            if let handle = profile.handle, !handle.isEmpty {
+                HomeView()
+            } else {
+                ClaimHandleView()
+            }
+        } else {
+            loadingShell
+        }
+    }
+
+    private var loadingShell: some View {
+        ProgressView()
+            .controlSize(.large)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(BlipColor.background)
     }
 
     #if DEBUG

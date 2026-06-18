@@ -4,7 +4,7 @@ import FirebaseFunctions
 import Foundation
 
 @MainActor
-final class UserRepository: ObservableObject {
+final class UserRepository: ObservableObject, BlipUserMutating {
     @Published private(set) var profile: BlipUser?
     @Published private(set) var lastError: String?
 
@@ -38,6 +38,30 @@ final class UserRepository: ObservableObject {
         listener?.remove()
         listener = nil
         profile = nil
+    }
+
+    /// Sets the user's free-form school string. Pass `nil` (or an empty string)
+    /// to clear it. Trimming/empty-collapse happens here so the field is either
+    /// non-empty or absent — no whitespace-only values land in Firestore.
+    func updateSchool(_ school: String?) async throws {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        let trimmed = school?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value: Any = (trimmed?.isEmpty ?? true) ? FieldValue.delete() : trimmed!
+        try await db.collection("users").document(uid).setData([
+            "school": value,
+            "updatedAt": Timestamp(date: Date()),
+        ], merge: true)
+    }
+
+    /// Persists a freshly-uploaded avatar URL to the user doc. The actual
+    /// Storage write is owned by `ProfilePhotoUploader`; this only swaps the
+    /// pointer so the listener-based `profile` re-publishes.
+    func updatePhotoURL(_ url: URL) async throws {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        try await db.collection("users").document(uid).setData([
+            "photoURL": url.absoluteString,
+            "updatedAt": Timestamp(date: Date()),
+        ], merge: true)
     }
 
     func updateQuietHours(start: Int, end: Int) async throws {

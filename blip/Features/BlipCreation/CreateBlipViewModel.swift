@@ -4,15 +4,11 @@ import Foundation
 final class CreateBlipViewModel: ObservableObject {
     @Published var name: String = ""
     @Published var size: Int = 4
-    @Published var activeStartHour: Int = 4
-    @Published var activeEndHour: Int = 4
     @Published var isSubmitting = false
     @Published var errorMessage: String?
     @Published var createdBlip: Blip?
 
-    let sizeOptions = Array(2...12)
-    let hourOptions = Array(0...23)
-    let timezoneIdentifier = TimeZone.current.identifier
+    let sizeOptions = Array(2...10)
 
     var isFormValid: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -27,15 +23,20 @@ final class CreateBlipViewModel: ObservableObject {
                     name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                     size: size,
                     ownerUid: uid,
-                    timezoneIdentifier: timezoneIdentifier,
-                    activeStartHour: activeStartHour,
-                    activeEndHour: activeEndHour
+                    timezoneIdentifier: TimeZone.current.identifier
                 )
             } catch {
                 errorMessage = error.localizedDescription
             }
             isSubmitting = false
         }
+    }
+
+    /// Short label like "Los Angeles" or "Seoul" — last `/`-segment with
+    /// underscores swapped for spaces.
+    func timezoneShortName(_ identifier: String) -> String {
+        let tail = identifier.split(separator: "/").last.map(String.init) ?? identifier
+        return tail.replacingOccurrences(of: "_", with: " ")
     }
 
     func sizeDescription(_ n: Int) -> String {

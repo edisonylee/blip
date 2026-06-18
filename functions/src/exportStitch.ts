@@ -53,7 +53,7 @@ export const exportStitch = onCall(
       throw new HttpsError("unauthenticated", "Sign in required.");
     }
     const blipId = request.data?.blipId;
-    if (typeof blipId !== "string" || blipId.length === 0) {
+    if (typeof blipId !== "string" || blipId.length === 0 || blipId.length > 64) {
       throw new HttpsError("invalid-argument", "blipId required");
     }
 
@@ -78,6 +78,45 @@ export const exportStitch = onCall(
       schedule.timezoneIdentifier,
       schedule.activeStartHour,
     );
+
+    // Rate-limit + in-progress lock. The lock doc lives at
+    // `users/{uid}/exportLocks/{blipId}_{dateKey}` and serves two purposes:
+    //   (1) cooldown — reject calls within COOLDOWN_MS of a successful run
+    //   (2) concurrency — reject overlapping calls already running
+    // ffmpeg + I/O for a single export is expensive enough that an unbounded
+    // tap-loop on the export button would otherwise rack up real money.
+    const COOLDOWN_MS = 30_000;
+    const STALE_LOCK_MS = 540_000; // function timeout
+    const lockRef = db
+      .collection("users").doc(uid)
+      .collection("exportLocks").doc(`${blipId}_${dateKey}`);
+
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(lockRef);
+      const now = Date.now();
+      const data = snap.data();
+      if (data) {
+        const startedAt: number | undefined = data.startedAtMs;
+        const finishedAt: number | undefined = data.finishedAtMs;
+        const state: string | undefined = data.state;
+        if (state === "running" && typeof startedAt === "number"
+            && now - startedAt < STALE_LOCK_MS) {
+          throw new HttpsError("aborted", "export already in progress");
+        }
+        if (state === "done" && typeof finishedAt === "number"
+            && now - finishedAt < COOLDOWN_MS) {
+          throw new HttpsError(
+            "resource-exhausted",
+            "wait a moment before exporting again",
+          );
+        }
+      }
+      tx.set(lockRef, {
+        state: "running",
+        startedAtMs: now,
+        startedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
 
     logger.info("exportStitch start", { blipId, uid, dateKey });
 
@@ -125,6 +164,7 @@ export const exportStitch = onCall(
     ).filter((hour) => availableHours.has(hour));
 
     const workdir = await fs.mkdtemp(path.join(os.tmpdir(), `stitch-${blipId}-`));
+    let exportFailed = false;
     try {
       // Download each unique clip exactly once via the admin SDK directly from
       // the bucket. We deliberately don't use the public `videoUrl` token here:
@@ -206,8 +246,21 @@ export const exportStitch = onCall(
       });
 
       return { url: stitchedUrl, dateKey, hours: sortedHours.length };
+    } catch (e) {
+      exportFailed = true;
+      throw e;
     } finally {
       await fs.rm(workdir, { recursive: true, force: true });
+      // Release the lock — `done` triggers the cooldown for subsequent calls;
+      // `failed` clears the lock so the user can retry without waiting.
+      await lockRef.set(
+        {
+          state: exportFailed ? "failed" : "done",
+          finishedAtMs: Date.now(),
+          finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      ).catch((err) => logger.warn("export lock release failed", { err }));
     }
   },
 );
@@ -254,16 +307,20 @@ async function composeHour(
 ): Promise<void> {
   if (members.length === 0) throw new Error("composeHour called with no members");
 
-  // Single-member fast path: one cell, full canvas. We still bail with black if
-  // somehow called without that member's clip (defensive — caller filters this).
+  // Single-member fast path. `gridFor(1)` now returns a 16:9 landscape cell
+  // centered vertically in the 9:16 canvas, so we aspect-fill the clip into
+  // that cell and pad the rest of the canvas black. Bypasses xstack (invalid
+  // for inputs=1) but still honours the same layout math as multi-member.
   if (members.length === 1) {
     const only = clipByUid.get(members[0]);
     if (!only) throw new Error("single-member hour with no clip");
+    const cell = gridFor(1).cells[0];
     await runFFmpeg([
       "-y", "-i", only,
       "-vf",
-      `scale=${CANVAS.width}:${CANVAS.height}:force_original_aspect_ratio=increase,` +
-      `crop=${CANVAS.width}:${CANVAS.height}`,
+      `scale=${cell.w}:${cell.h}:force_original_aspect_ratio=increase,` +
+      `crop=${cell.w}:${cell.h},` +
+      `pad=${CANVAS.width}:${CANVAS.height}:${cell.x}:${cell.y}:black`,
       "-r", "30", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an",
       outPath,
     ]);
@@ -275,20 +332,23 @@ async function composeHour(
   const filterParts: string[] = [];
 
   members.forEach((uid, i) => {
+    // Each seat is scaled to its own cell rect — the lone full-width row
+    // (odd counts ≥ 7) needs a wider scale than the doubled rows above it.
+    const cell = grid.cells[i];
     const clipPath = clipByUid.get(uid);
     if (clipPath) {
       args.push("-i", clipPath);
     } else {
-      // lavfi black source matching cell dimensions/duration so xstack timing aligns.
+      // lavfi black source sized to this cell so xstack timing/dims align.
       args.push(
         "-f", "lavfi",
         "-t", String(CLIP_DURATION_SEC),
-        "-i", `color=c=black:s=${grid.cellWidth}x${grid.cellHeight}:r=30`,
+        "-i", `color=c=black:s=${cell.w}x${cell.h}:r=30`,
       );
     }
     filterParts.push(
-      `[${i}:v]scale=${grid.cellWidth}:${grid.cellHeight}:force_original_aspect_ratio=increase,` +
-      `crop=${grid.cellWidth}:${grid.cellHeight},setpts=PTS-STARTPTS[v${i}]`
+      `[${i}:v]scale=${cell.w}:${cell.h}:force_original_aspect_ratio=increase,` +
+      `crop=${cell.w}:${cell.h},setpts=PTS-STARTPTS[v${i}]`
     );
   });
 

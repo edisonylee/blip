@@ -22,7 +22,7 @@ struct PlusPopover: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            Color.black.opacity(0.001)
+            BlipColor.touchProxy
                 .ignoresSafeArea()
                 .onTapGesture { onDismiss() }
 

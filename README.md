@@ -1,6 +1,6 @@
 # blip
 
-A US-targeted reimagining of [Setlog](https://setlog.app), the Korean group-vlog app. Friends form a group, everyone records a 2-second video clip every hour, and at any moment anyone can export a single stitched video of the day.
+A group-vlog app for friends. Everyone in a group records a 2-second clip every hour, and at any moment anyone can export a single stitched video of the day.
 
 The core experience is the **export** — a TikTok-ready highlight reel of your group's day, automatically. The hourly cadence is the forcing function; the stitch is the payoff.
 
@@ -46,7 +46,6 @@ functions/             Cloud Functions (TypeScript)
 │   ├── onReport.ts            moderation report handler
 │   └── deleteAccount.ts       App Store-required account deletion
 
-setlog-research/       UX research, screen-by-screen breakdown, screenshots
 firestore.rules        security rules
 storage.rules          storage rules
 project.yml            XcodeGen config (canonical)

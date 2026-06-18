@@ -20,7 +20,11 @@ import * as logger from "firebase-functions/logger";
  * "already credited" branch and throws `failed-precondition`.
  */
 export const claimReferral = onCall(
-  { region: "us-central1" },
+  {
+    region: "us-central1",
+    memory: "256MiB",
+    timeoutSeconds: 30,
+  },
   async (request) => {
     const callerUid = request.auth?.uid;
     if (!callerUid) {

@@ -68,6 +68,13 @@ final class ClipUploader: ObservableObject, ClipUploading {
         let durationSeconds = await Self.probeDuration(fileURL: fileURL)
 
         // 3. Write clip doc into each target blip's clips subcollection.
+        // Deterministic clipId per (uid, hour) — repost within the hour replaces
+        // the prior doc. On re-record, we preserve `hidden` and `reportCount`
+        // so a re-record can't un-hide a previously flagged clip; the Firestore
+        // rule (`/clips/{clipId}` update) enforces the same invariant server-side.
+        let clipId = "\(uid)_\(hour)"
+        let basePayload: [String: Any] = {
+            var p: [String: Any] = [
         // Deterministic clipId per (uid, hour) — repost within the hour replaces the prior doc.
         let batch = db.batch()
         let sharedToBlipIds = destinations.map(\.id)
@@ -87,13 +94,27 @@ final class ClipUploader: ObservableObject, ClipUploading {
                 "createdAt": Timestamp(date: capturedAt),
                 "sharedToBlipIds": sharedToBlipIds,
                 "durationSeconds": durationSeconds,
-                "reportCount": 0,
-                "hidden": false,
             ]
-            if let thumbnailUrlString { payload["thumbnailUrl"] = thumbnailUrlString }
-            batch.setData(payload, forDocument: ref)
+            if let thumbnailUrlString { p["thumbnailUrl"] = thumbnailUrlString }
+            return p
+        }()
+
+        for blipId in sharedToBlipIds {
+            let ref = db.collection("blips").document(blipId)
+                .collection("days").document(dateKey)
+                .collection("clips").document(clipId)
+            let existing = try? await ref.getDocument()
+            if existing?.exists == true {
+                // Re-record: skip moderation fields. The rule rejects any update
+                // that mutates `hidden` or `reportCount` from a non-server actor.
+                try await ref.updateData(basePayload)
+            } else {
+                var fresh = basePayload
+                fresh["hidden"] = false
+                fresh["reportCount"] = 0
+                try await ref.setData(fresh)
+            }
         }
-        try await batch.commit()
 
         // 4. Post a clip card message to each blip's group chat.
         let senderName = await fetchSenderName(uid: uid)

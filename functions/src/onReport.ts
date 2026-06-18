@@ -2,7 +2,11 @@ import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 
-const AUTO_HIDE_THRESHOLD = 3;
+// Auto-hide a clip once this many distinct reports land on it. 3 was too
+// aggressive — any 3 coordinated accounts could nuke any clip. 5 raises the
+// floor without slowing legitimate moderation; high-volume offenders still hit
+// the bar quickly. Server-driven, not client-tweakable.
+const AUTO_HIDE_THRESHOLD = 5;
 
 /**
  * Triggered when a user files a report at reports/{reportId}.
@@ -22,6 +26,8 @@ export const onReport = onDocumentCreated(
   {
     document: "reports/{reportId}",
     region: "us-central1",
+    memory: "256MiB",
+    timeoutSeconds: 20,
   },
   async (event) => {
     const data = event.data?.data();

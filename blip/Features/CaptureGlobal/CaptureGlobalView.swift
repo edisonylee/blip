@@ -47,9 +47,7 @@ struct CaptureGlobalView: View {
 
     var body: some View {
         ZStack {
-            // Camera surface is always black regardless of theme (mirrors per-blip
-            // CaptureView and matches the dark camera UX users expect).
-            Color.black.ignoresSafeArea()
+            BlipColor.mediaBackdrop.ignoresSafeArea()
             cameraSurface
 
             VStack {

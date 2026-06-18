@@ -17,6 +17,8 @@ export const onNudgeCreated = onDocumentCreated(
   {
     document: "blips/{blipId}/nudges/{nudgeId}",
     region: "us-central1",
+    memory: "256MiB",
+    timeoutSeconds: 30,
   },
   async (event) => {
     const snap = event.data;

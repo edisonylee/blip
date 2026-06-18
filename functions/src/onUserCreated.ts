@@ -20,6 +20,8 @@ export const onUserCreated = onDocumentCreated(
   {
     document: "users/{uid}",
     region: "us-central1",
+    memory: "256MiB",
+    timeoutSeconds: 20,
   },
   async (event) => {
     const snap = event.data;

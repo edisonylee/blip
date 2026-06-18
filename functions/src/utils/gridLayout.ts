@@ -1,25 +1,41 @@
 /**
- * Per-hour portrait grid layout, based on actual group membership.
+ * Per-hour grid layout. Mirrors `blip/Features/Shared/MemberGrid.swift` —
+ * keep both in sync so the in-app preview matches the stitched export.
  *
- *   1    -> 1×1 (full canvas)
- *   2    -> 1×2
- *   3    -> 2×2 (last seat centered)
- *   4    -> 2×2
- *   5    -> 2×3 (last seat centered)
- *   6    -> 2×3
- *   7-8  -> 2×4 (last seat centered for 7)
- *   9-10 -> 2×5 (last seat centered for 9)
- *   11-12 -> 2×6 (last seat centered for 11)
+ * Capture is landscape (CaptureSession sets videoRotationAngle = 0), so
+ * landscape clips fit cleanly into the wide 1-col rows. For 6+ members we
+ * split into two columns; odd member counts get a single full-width "lone"
+ * row at the bottom rather than leaving a blank cell in a 2-col row.
  *
- * Inputs are pre-scaled to cellWidth × cellHeight before xstack, so positions
- * are literal pixel offsets (no `w0/h0` variables needed).
+ *   1     -> 1×1 full canvas
+ *   2..5  -> 1 col × N rows
+ *   6     -> 2 cols × 3 rows
+ *   7     -> 3 doubled rows + 1 lone full-width row
+ *   8     -> 2 cols × 4 rows
+ *   9     -> 4 doubled rows + 1 lone full-width row
+ *  10     -> 2 cols × 5 rows
+ *  11     -> 5 doubled rows + 1 lone full-width row
+ *  12     -> 2 cols × 6 rows                            (12 = hard cap)
+ *
+ * Each input is scaled to its own cell size before xstack — see
+ * `composeHour` in exportStitch.ts. Cells with a different aspect than the
+ * source clip use `force_original_aspect_ratio=increase + crop` (aspect-fill).
  */
+export interface GridCell {
+  /** Top-left x in canvas pixel coords. */
+  x: number;
+  /** Top-left y in canvas pixel coords. */
+  y: number;
+  /** Cell width in pixels. */
+  w: number;
+  /** Cell height in pixels. */
+  h: number;
+}
+
 export interface GridSpec {
-  cols: number;
-  rows: number;
-  cellWidth: number;
-  cellHeight: number;
-  /** Literal pixel positions, "x_y|x_y|...", one entry per cell. */
+  /** Per-seat rectangle. `cells.length === count`. */
+  cells: GridCell[];
+  /** Comma-free pipe-separated `x_y` positions for the ffmpeg `xstack=layout=` arg. */
   xstackLayout: string;
 }
 
@@ -27,37 +43,54 @@ const CANVAS_WIDTH = 1080;
 const CANVAS_HEIGHT = 1920;
 
 export function gridFor(count: number): GridSpec {
-  let cols: number;
-  let rows: number;
-  if (!Number.isInteger(count) || count < 1 || count > 12) {
-    throw new Error(`grid count must be between 1 and 12, got ${count}`);
+  const W = CANVAS_WIDTH;
+  const H = CANVAS_HEIGHT;
+  const cells: GridCell[] = [];
+
+  if (count <= 0) {
+    return { cells, xstackLayout: "" };
   }
-  if (count <= 2) {
-    cols = 1;
-    rows = count;
+
+  if (count === 1) {
+    // 1 person → a single 16:9 landscape cell centered vertically in the
+    // 9:16 canvas; black bars top + bottom preserve the recording's native
+    // framing instead of cropping to a portrait full-canvas cell.
+    const cellH = Math.round((W * 9) / 16);
+    const yOff = Math.round((H - cellH) / 2);
+    cells.push({ x: 0, y: yOff, w: W, h: cellH });
+  } else if (count <= 5) {
+    const cellH = Math.floor(H / count);
+    for (let i = 0; i < count; i++) {
+      cells.push({ x: 0, y: i * cellH, w: W, h: cellH });
+    }
   } else {
-    cols = 2;
-    rows = Math.ceil(count / 2);
+    // 6+: two columns, with an optional lone full-width row at the bottom
+    // when the count is odd.
+    const isOdd = count % 2 !== 0;
+    const fullRows = isOdd ? (count - 1) / 2 : count / 2;
+    const totalRows = isOdd ? fullRows + 1 : fullRows;
+    const rowH = Math.floor(H / totalRows);
+    const colW = Math.floor(W / 2);
+
+    for (let r = 0; r < fullRows; r++) {
+      cells.push({ x: 0, y: r * rowH, w: colW, h: rowH });
+      cells.push({ x: colW, y: r * rowH, w: colW, h: rowH });
+    }
+    if (isOdd) {
+      // Lone cell is the same size as a doubled cell (half-width) and
+      // horizontally centered — `xstack=fill=black` plus the trailing
+      // `pad=` paint the leftover canvas black on either side.
+      cells.push({
+        x: Math.floor((W - colW) / 2),
+        y: fullRows * rowH,
+        w: colW,
+        h: rowH,
+      });
+    }
   }
 
-  const cellWidth = Math.floor(CANVAS_WIDTH / cols);
-  const cellHeight = Math.floor(CANVAS_HEIGHT / rows);
-
-  const positions: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const r = Math.floor(i / cols);
-    const c = i % cols;
-    const isCenteredFinalSeat = cols === 2 && count % 2 === 1 && i === count - 1;
-    const x = isCenteredFinalSeat ? Math.floor((CANVAS_WIDTH - cellWidth) / 2) : c * cellWidth;
-    positions.push(`${x}_${r * cellHeight}`);
-  }
-  return {
-    cols,
-    rows,
-    cellWidth,
-    cellHeight,
-    xstackLayout: positions.join("|"),
-  };
+  const xstackLayout = cells.map((c) => `${c.x}_${c.y}`).join("|");
+  return { cells, xstackLayout };
 }
 
 export const CANVAS = { width: CANVAS_WIDTH, height: CANVAS_HEIGHT };

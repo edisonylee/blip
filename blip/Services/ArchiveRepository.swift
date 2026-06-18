@@ -60,11 +60,13 @@ final class ArchiveRepository: ObservableObject {
         else { return nil }
         let url = (data["stitchedVideoUrl"] as? String).flatMap(URL.init(string:))
         let stitchedAt = (data["stitchedAt"] as? Timestamp)?.dateValue()
+        let likeCount = data["likeCount"] as? Int ?? 0
         return BlipDay(
             id: dateKey,
             stitchStatus: status,
             stitchedVideoUrl: url,
-            stitchedAt: stitchedAt
+            stitchedAt: stitchedAt,
+            likeCount: likeCount
         )
     }
 }

@@ -9,9 +9,12 @@ struct BlipDetailView: View {
     let blip: Blip
 
     @EnvironmentObject private var auth: AuthService
+    @EnvironmentObject private var moderation: ModerationService
+    @EnvironmentObject private var blipsRepo: BlipRepository
     @StateObject private var clips = ClipsRepository()
     @StateObject private var nudges = NudgeService()
     @StateObject private var profiles = UserProfilesRepository()
+    @Environment(\.dismiss) private var dismiss
 
     @State private var showShareSheet = false
     @State private var showInviteSheet = false
@@ -62,10 +65,25 @@ struct BlipDetailView: View {
         }
         .task(id: blip.id) {
             clips.startListening(blip: blip)
+            clips.setBlocklist(moderation.blockedUsers)
             profiles.observe(uids: blip.members)
+            profiles.setBlocklist(moderation.blockedUsers)
         }
         .onChange(of: blip.members) { _, new in
             profiles.observe(uids: new)
+        }
+        .onReceive(moderation.$blockedUsers) { uids in
+            clips.setBlocklist(uids)
+            profiles.setBlocklist(uids)
+        }
+        .onReceive(blipsRepo.$blips) { blips in
+            // Pop to Home when this blip leaves the user's list — covers
+            // delete (server tears down the doc), leave (arrayRemove), and
+            // being kicked (owner removes a member). Idempotent: if the view
+            // is already gone, dismiss is a no-op.
+            if !blips.contains(where: { $0.id == blip.id }) {
+                dismiss()
+            }
         }
         .toolbar {
             ToolbarItem(placement: .principal) {

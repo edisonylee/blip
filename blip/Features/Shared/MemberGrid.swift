@@ -3,32 +3,92 @@ import SwiftUI
 
 // MARK: - Grid layout (Swift mirror of functions/src/utils/gridLayout.ts)
 
-/// Cell layout matching the server export: one full-width column for one or two
-/// members, then two seats per row through the 12-member cap.
+/// Cell layout derived from `blip.size`, matching the export pipeline so the
+/// in-app preview is positionally faithful to the stitched output.
+///
+///   1     -> 1 row, 1 cell (full canvas)
+///   2..5  -> N rows × 1 col (landscape clips fill full-width rows)
+///   6     -> 3 rows × 2 cols
+///   7     -> 3 doubled rows + 1 lone full-width row    (4 rows total)
+///   8     -> 4 rows × 2 cols
+///   9     -> 4 doubled rows + 1 lone full-width row    (5 rows total)
+///  10     -> 5 rows × 2 cols
+///  11     -> 5 doubled rows + 1 lone full-width row    (6 rows total)
+///  12     -> 6 rows × 2 cols                            (12 = hard cap)
+///
+/// Every row has equal height; columns split each row's width evenly. The
+/// "lone row" pattern handles odd member counts ≥ 7 — the last person gets a
+/// full-width row instead of leaving a blank cell. Mirrors
+/// `functions/src/utils/gridLayout.ts` — keep both in sync so preview ==
+/// export.
 struct MemberGridLayout {
-    let cols: Int
-    let rows: Int
-    let cellAspect: CGFloat  // width / height — matches export cell pixel ratio
-    let centersFinalSeat: Bool
+    /// Per-seat rectangles in canvas (1080×1920) pixel coords. Index = seat
+    /// order, so `cells[i]` is the rect for the i-th member in `blip.members`.
+    let cells: [Cell]
+    /// Row decomposition for view rendering: each row is the list of seat
+    /// indices it contains, left-to-right. All rows have equal height.
+    let rows: [[Int]]
 
-    static func layout(for seatCount: Int) -> MemberGridLayout {
-        let count = min(12, max(1, seatCount))
-        let (cols, rows): (Int, Int)
-        if count <= 2 {
-            (cols, rows) = (1, count)
+    static let canvasWidth: CGFloat = 1080
+    static let canvasHeight: CGFloat = 1920
+    static let canvasAspect: CGFloat = canvasWidth / canvasHeight
+
+    struct Cell: Equatable {
+        let x: CGFloat
+        let y: CGFloat
+        let w: CGFloat
+        let h: CGFloat
+    }
+
+    static func layout(for memberCapacity: Int) -> MemberGridLayout {
+        let count = max(1, memberCapacity)
+        let W = canvasWidth
+        let H = canvasHeight
+
+        var cells: [Cell] = []
+        var rows: [[Int]] = []
+
+        if count == 1 {
+            // 1 person → a single 16:9 landscape cell centered vertically in
+            // the 9:16 canvas. The clip is recorded landscape; this preserves
+            // its native framing with black bars top + bottom rather than
+            // cropping to a portrait full-canvas cell.
+            let cellW = W
+            let cellH = (W * 9.0 / 16.0).rounded()
+            let yOffset = ((H - cellH) / 2).rounded()
+            cells.append(Cell(x: 0, y: yOffset, w: cellW, h: cellH))
+            rows.append([0])
+        } else if count <= 5 {
+            let cellH = H / CGFloat(count)
+            for i in 0..<count {
+                cells.append(Cell(x: 0, y: CGFloat(i) * cellH, w: W, h: cellH))
+                rows.append([i])
+            }
         } else {
-            (cols, rows) = (2, Int(ceil(Double(count) / 2.0)))
+            // 6+: two columns, with an optional lone full-width row at the
+            // bottom when the member count is odd.
+            let isOdd = count % 2 != 0
+            let fullRows = isOdd ? (count - 1) / 2 : count / 2
+            let totalRows = isOdd ? fullRows + 1 : fullRows
+            let rowH = H / CGFloat(totalRows)
+            let colW = W / 2
+            var idx = 0
+            for r in 0..<fullRows {
+                cells.append(Cell(x: 0, y: CGFloat(r) * rowH, w: colW, h: rowH))
+                cells.append(Cell(x: colW, y: CGFloat(r) * rowH, w: colW, h: rowH))
+                rows.append([idx, idx + 1])
+                idx += 2
+            }
+            if isOdd {
+                // Lone cell is the same size as a doubled cell (half-width)
+                // and horizontally centered — black bars on either side in
+                // the export, equal flex spacers in the SwiftUI preview.
+                cells.append(Cell(x: (W - colW) / 2, y: CGFloat(fullRows) * rowH, w: colW, h: rowH))
+                rows.append([idx])
+            }
         }
-        let canvasWidth: CGFloat = 1080
-        let canvasHeight: CGFloat = 1920
-        let cellW = canvasWidth / CGFloat(cols)
-        let cellH = canvasHeight / CGFloat(rows)
-        return MemberGridLayout(
-            cols: cols,
-            rows: rows,
-            cellAspect: cellW / cellH,
-            centersFinalSeat: cols == 2 && count.isMultiple(of: 2) == false
-        )
+
+        return MemberGridLayout(cells: cells, rows: rows)
     }
 }
 
@@ -73,45 +133,38 @@ struct MemberGrid: View {
 
     var body: some View {
         let seats = computeSeats()
-        let layout = MemberGridLayout.layout(for: seats.count)
 
-        Grid(horizontalSpacing: 4, verticalSpacing: 4) {
-            ForEach(0..<layout.rows, id: \.self) { row in
-                let start = row * layout.cols
-                let end = min(start + layout.cols, seats.count)
-                let rowSeats = Array(seats[start..<end])
-
-                GridRow {
-                    if layout.cols == 1 {
-                        seatView(rowSeats[0], layout: layout)
-                            .gridCellColumns(4)
-                    } else if rowSeats.count == 1 && layout.centersFinalSeat {
-                        Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
-                        seatView(rowSeats[0], layout: layout)
-                            .gridCellColumns(2)
-                        Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
-                    } else {
-                        ForEach(Array(rowSeats.enumerated()), id: \.offset) { _, seat in
-                            seatView(seat, layout: layout)
-                                .gridCellColumns(2)
-                        }
-                    }
+        // Each cell is positioned absolutely in canvas-pixel coordinates and
+        // scaled to the rendered container size. This handles every layout
+        // pattern uniformly — equal grid rows, the half-width centered lone
+        // cell (odd N ≥ 7), and the N=1 landscape-letterbox case — without
+        // per-pattern row math. The grid backing is transparent so the
+        // surrounding chat background shows through the rounded-corner gaps
+        // between cells (in both dark and light themes). The export pipeline
+        // still pads with `pad=black` server-side; this is preview-only.
+        GeometryReader { geo in
+            let scale = geo.size.width / MemberGridLayout.canvasWidth
+            ZStack(alignment: .topLeading) {
+                Color.clear
+                ForEach(Array(seats.enumerated()), id: \.offset) { idx, seat in
+                    let cell = layout.cells[idx]
+                    SeatView(
+                        seat: seat,
+                        onRecord: onRecord,
+                        onInvite: onInvite,
+                        isAuthor: isAuthor,
+                        onDelete: onDelete,
+                        onEditCaption: onEditCaption,
+                        onNudge: onNudge,
+                        onReRecord: isCurrentHour ? onRecord : nil
+                    )
+                    .frame(width: cell.w * scale, height: cell.h * scale)
+                    .offset(x: cell.x * scale, y: cell.y * scale)
                 }
             }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
         }
-    }
-
-    private func seatView(_ seat: Seat, layout: MemberGridLayout) -> some View {
-        SeatView(
-            seat: seat,
-            cellAspect: layout.cellAspect,
-            onRecord: onRecord,
-            onInvite: onInvite,
-            isAuthor: isAuthor,
-            onDelete: onDelete,
-            onEditCaption: onEditCaption,
-            onNudge: onNudge
-        )
+        .aspectRatio(MemberGridLayout.canvasAspect, contentMode: .fit)
     }
 
     /// One seat per `blip.size` slot, in stable order:
@@ -160,13 +213,16 @@ struct MemberGrid: View {
 
 private struct SeatView: View {
     let seat: Seat
-    let cellAspect: CGFloat
     let onRecord: () -> Void
     let onInvite: () -> Void
     let isAuthor: (BlipClip) -> Bool
     let onDelete: (BlipClip) -> Void
     let onEditCaption: (BlipClip) -> Void
     let onNudge: ((String) -> Void)?
+    /// Non-nil only on the current hour and only for the author's own seat —
+    /// surfaces a "re-record" option in the context menu so the action is
+    /// discoverable beyond the bare tap-the-tile gesture.
+    let onReRecord: (() -> Void)?
 
     var body: some View {
         Group {
@@ -182,7 +238,8 @@ private struct SeatView: View {
                     clip: clip,
                     isAuthor: isAuthor(clip),
                     onDelete: { onDelete(clip) },
-                    onEditCaption: { onEditCaption(clip) }
+                    onEditCaption: { onEditCaption(clip) },
+                    onReRecord: (isMine && onReRecord != nil) ? onReRecord : nil
                 )
 
             case .recordPrompt(let initials):
@@ -201,7 +258,6 @@ private struct SeatView: View {
                 InviteSeat(onInvite: onInvite)
             }
         }
-        .aspectRatio(cellAspect, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
@@ -215,6 +271,7 @@ private struct PostedSeat: View {
     var body: some View {
         ZStack {
             ClipPlayerView(url: clip.videoUrl)
+                .allowsHitTesting(false)
 
             // Centered both horizontally and vertically over the entire clip frame.
             ClipTimestampLabel(hour: clip.hour)
@@ -349,23 +406,32 @@ private struct InviteSeat: View {
 // MARK: - Auto-loop player
 
 /// Auto-loop video preview for a posted clip. Mutes audio so the grid doesn't blare.
-/// Coordinator owns the loop observer and pauses/tears down the player on dismantle
-/// so off-screen cells don't keep decoding.
+/// Uses `AVPlayerLooper` + `AVQueuePlayer` (Apple-recommended pattern) — the
+/// looper handles seek timing and end-of-content edge cases that the older
+/// notification-based loop hit on iOS 26 + audio-session changes.
 private struct ClipPlayerView: UIViewControllerRepresentable {
     let url: URL
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let player = AVPlayer(url: url)
-        player.isMuted = true
-        player.actionAtItemEnd = .none
+        let item = AVPlayerItem(url: url)
+        let queuePlayer = AVQueuePlayer()
+        queuePlayer.isMuted = true
+        let looper = AVPlayerLooper(player: queuePlayer, templateItem: item)
+        context.coordinator.queuePlayer = queuePlayer
+        context.coordinator.looper = looper
+
         let vc = AVPlayerViewController()
-        vc.player = player
+        vc.player = queuePlayer
         vc.showsPlaybackControls = false
         vc.videoGravity = .resizeAspectFill
-        context.coordinator.attach(player: player)
-        player.play()
+        // AVPlayerViewController's view defaults to opaque black, which bleeds
+        // through at every rounded corner of the seat clipShape. Clearing the
+        // backgrounds lets the SwiftUI clipShape do its job cleanly.
+        vc.view.backgroundColor = .clear
+        vc.contentOverlayView?.backgroundColor = .clear
+        queuePlayer.play()
         return vc
     }
 
@@ -373,32 +439,18 @@ private struct ClipPlayerView: UIViewControllerRepresentable {
 
     static func dismantleUIViewController(_ uiViewController: AVPlayerViewController, coordinator: Coordinator) {
         coordinator.tearDown()
-        uiViewController.player?.pause()
         uiViewController.player = nil
     }
 
     final class Coordinator {
-        private var loopToken: NSObjectProtocol?
-        private weak var player: AVPlayer?
-
-        func attach(player: AVPlayer) {
-            self.player = player
-            loopToken = NotificationCenter.default.addObserver(
-                forName: .AVPlayerItemDidPlayToEndTime,
-                object: player.currentItem,
-                queue: .main
-            ) { [weak player] _ in
-                player?.seek(to: .zero)
-                player?.play()
-            }
-        }
+        var queuePlayer: AVQueuePlayer?
+        var looper: AVPlayerLooper?
 
         func tearDown() {
-            if let token = loopToken {
-                NotificationCenter.default.removeObserver(token)
-                loopToken = nil
-            }
-            player?.pause()
+            queuePlayer?.pause()
+            looper?.disableLooping()
+            looper = nil
+            queuePlayer = nil
         }
 
         deinit { tearDown() }

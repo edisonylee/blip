@@ -15,17 +15,29 @@ struct CaptureView: View {
     @StateObject private var session = CaptureSession()
 
     @State private var recordingURL: URL?
+    /// Zoom factor at the start of the current pinch (committed when the gesture ends).
+    @State private var baseZoom: CGFloat = 1.0
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            BlipColor.mediaBackdrop.ignoresSafeArea()
 
             // Preview only renders for real cameras. Synthetic mode = no preview, just the record button.
-            // Landscape 16:9 letterbox, centered. Black bars top/bottom in portrait orientation.
+            // Landscape 16:9 — fills the screen when the device is rotated to landscape (the
+            // capture flow forces .landscapeRight; portrait fallback letterboxes).
             if !session.useSynthetic && (session.state == .ready || session.state == .recording) {
                 CapturePreview(session: session.session)
                     .aspectRatio(16.0 / 9.0, contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .gesture(
+                        MagnificationGesture()
+                            .onChanged { scale in
+                                session.setZoom(factor: baseZoom * scale)
+                            }
+                            .onEnded { scale in
+                                baseZoom = max(1.0, baseZoom * scale)
+                            }
+                    )
             }
 
             #if DEBUG
@@ -49,14 +61,61 @@ struct CaptureView: View {
                 Spacer()
                 statusOverlay
                 Spacer()
-                recordButton
-                    .padding(.bottom, 40)
+                if !session.availableLenses.isEmpty && session.state == .ready {
+                    lensButtonRow
+                        .padding(.bottom, 12)
+                }
+                ZStack {
+                    recordButton
+                    if session.state == .recording {
+                        // Accent ring sweeps as the 2-second cap counts down.
+                        // sweepAngle = 360 at t=0, → 0 at the cap. trim() expects
+                        // start/end in 0…1 of the circle.
+                        Circle()
+                            .trim(from: 0, to: max(0, min(1, 1 - session.recordingElapsed / CaptureSession.clipDuration)))
+                            .stroke(BlipColor.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                            .frame(width: 84, height: 84)
+                            .rotationEffect(.degrees(-90))
+                            .animation(.linear(duration: 0.1), value: session.recordingElapsed)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .padding(.bottom, 40)
+                .overlay(alignment: .top) {
+                    if session.state == .recording {
+                        let remaining = max(0, CaptureSession.clipDuration - session.recordingElapsed)
+                        Text("REC · \(String(format: "%.1f", remaining))s left")
+                            .font(.blip(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(BlipColor.error, in: Capsule())
+                            .offset(y: -28)
+                            .allowsHitTesting(false)
+                    }
+                }
             }
         }
         .navigationDestination(item: $recordingURL) { url in
             ReviewView(blip: blip, fileURL: url, onPosted: onPosted)
         }
-        .onDisappear { session.stop() }
+        .onAppear {
+            // Capture is landscape-native — sensor records 16:9 landscape, so we
+            // rotate the device to match. App-wide orientation is portrait
+            // otherwise; this gate flips the AppDelegate mask while we're on
+            // screen and `requestGeometryUpdate` actually performs the rotation.
+            AppDelegate.lockedOrientation = .landscape
+            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
+            }
+        }
+        .onDisappear {
+            session.stop()
+            AppDelegate.lockedOrientation = .portrait
+            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+            }
+        }
     }
 
     private var topBar: some View {
@@ -68,7 +127,7 @@ struct CaptureView: View {
                     .frame(width: 36, height: 36)
                     .background(.black.opacity(0.4), in: Circle())
             }
-            .accessibilityLabel("Dismiss")
+            .accessibilityLabel("close")
             Spacer()
             Text(blip.name)
                 .font(BlipTypography.body)
@@ -77,10 +136,56 @@ struct CaptureView: View {
                 .padding(.vertical, 6)
                 .background(.black.opacity(0.4), in: Capsule())
             Spacer()
-            Color.clear.frame(width: 36, height: 36)
+            Button {
+                Task { await session.flipCamera() }
+            } label: {
+                Image(systemName: "arrow.triangle.2.circlepath.camera")
+                    .font(.title3)
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(.black.opacity(0.4), in: Circle())
+            }
+            .accessibilityLabel("flip camera")
+            .disabled(session.state == .recording)
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
+    }
+
+    private var lensButtonRow: some View {
+        HStack(spacing: 8) {
+            ForEach(session.availableLenses) { lens in
+                Button {
+                    session.setZoom(factor: lens.zoomFactor, ramped: true)
+                    baseZoom = lens.zoomFactor
+                } label: {
+                    Text(lens.label)
+                        .font(.blip(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(
+                            isActive(lens) ? .white.opacity(0.18) : .black.opacity(0.4),
+                            in: Circle()
+                        )
+                        .overlay(
+                            Circle()
+                                .stroke(isActive(lens) ? .white : .clear, lineWidth: 1.5)
+                        )
+                }
+                .accessibilityLabel("zoom \(lens.label)")
+            }
+        }
+    }
+
+    /// Highlight the lens whose zoom factor matches the active factor most
+    /// closely — pinch can land between two lens thresholds, so we round-trip
+    /// to the nearest one rather than requiring an exact float match.
+    private func isActive(_ lens: CaptureSession.LensOption) -> Bool {
+        guard let nearest = session.availableLenses.min(by: {
+            abs($0.zoomFactor - session.currentZoomFactor)
+                < abs($1.zoomFactor - session.currentZoomFactor)
+        }) else { return false }
+        return nearest.id == lens.id
     }
 
     @ViewBuilder

@@ -8,15 +8,21 @@ struct ClipContextMenu: ViewModifier {
     let isAuthor: Bool
     let onDelete: () -> Void
     let onEditCaption: () -> Void
+    let onReRecord: (() -> Void)?
 
     func body(content: Content) -> some View {
         content.contextMenu {
             if isAuthor {
-                Button(role: .destructive) { onDelete() } label: {
-                    Label("delete", systemImage: "trash")
+                if let onReRecord {
+                    Button { onReRecord() } label: {
+                        Label("re-record", systemImage: "arrow.counterclockwise")
+                    }
                 }
                 Button { onEditCaption() } label: {
                     Label("edit caption", systemImage: "textformat")
+                }
+                Button(role: .destructive) { onDelete() } label: {
+                    Label("delete", systemImage: "trash")
                 }
             }
             Button { Task { await ClipSaver.save(clip: clip) } } label: {
@@ -31,13 +37,15 @@ extension View {
         clip: BlipClip,
         isAuthor: Bool,
         onDelete: @escaping () -> Void,
-        onEditCaption: @escaping () -> Void
+        onEditCaption: @escaping () -> Void,
+        onReRecord: (() -> Void)? = nil
     ) -> some View {
         modifier(ClipContextMenu(
             clip: clip,
             isAuthor: isAuthor,
             onDelete: onDelete,
-            onEditCaption: onEditCaption
+            onEditCaption: onEditCaption,
+            onReRecord: onReRecord
         ))
     }
 }

@@ -30,6 +30,14 @@ struct BlipUser: Codable, Identifiable, Hashable {
     var lastClipDay: String?
     var friendsCount: Int = 0
 
+    /// Total likes across all stitched days the user owns. Written by the
+    /// `onDayLike` Cloud Function (admin SDK; client treats as read-only).
+    var likesCount: Int = 0
+
+    // Optional profile fields editable by the user.
+    /// Free-form school name — surfaced under the @handle on the profile screen.
+    var school: String?
+
     // Referrals — written by the `onUserCreated` Cloud Function trigger.
     // Each new uid that signs up via this user's invite link increments the
     // referrer's count by 1 (idempotent: doc-create only fires once per uid).

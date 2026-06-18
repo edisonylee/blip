@@ -8,6 +8,9 @@ struct BlipDay: Codable, Identifiable, Hashable {
     var stitchStatus: StitchStatus
     var stitchedVideoUrl: URL?
     var stitchedAt: Date?
+    /// Total likes across all users. Denormalized counter written by the
+    /// `onDayLike` Cloud Function. Client treats as read-only.
+    var likeCount: Int = 0
 
     enum StitchStatus: String, Codable {
         case pending        // day not yet ended

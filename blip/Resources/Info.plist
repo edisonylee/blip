@@ -45,22 +45,19 @@
 	<string>Save the day's stitched vlog to your photos.</string>
 	<key>UIAppFonts</key>
 	<array>
-		<string>Fonts/Geist-Light.otf</string>
-		<string>Fonts/Geist-Regular.otf</string>
-		<string>Fonts/Geist-Medium.otf</string>
-		<string>Fonts/Geist-SemiBold.otf</string>
-		<string>Fonts/Geist-Bold.otf</string>
-		<string>Fonts/Geist-Black.otf</string>
+		<string>Manrope-ExtraLight.ttf</string>
+		<string>Manrope-Light.ttf</string>
+		<string>Manrope-Regular.ttf</string>
+		<string>Manrope-Medium.ttf</string>
+		<string>Manrope-SemiBold.ttf</string>
+		<string>Manrope-Bold.ttf</string>
+		<string>Manrope-ExtraBold.ttf</string>
+		<string>Judson-Bold.ttf</string>
 	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
-	</dict>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
 	</dict>
 	<key>UIBackgroundModes</key>
 	<array>

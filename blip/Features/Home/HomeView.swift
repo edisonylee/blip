@@ -10,7 +10,6 @@ struct HomeView: View {
     @StateObject private var clipUploader = ClipUploader()
     @State private var showPlusMenu = false
     @State private var creationDestination: CreationDestination?
-    @State private var showSettings = false
     @State private var path = NavigationPath()
     @State private var pendingCaptureBlip: Blip?
     @State private var showGlobalCapture = false
@@ -25,11 +24,15 @@ struct HomeView: View {
                 BlipColor.background.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    HomeHeader(
-                        onSettings: { showSettings = true },
-                        onPlus: { showPlusMenu = true }
-                    )
-                    .padding(.top, 8)
+                    // Home header (wordmark + plus) is blips-only chrome —
+                    // the profile tab owns its own top bar (wordmark + share +
+                    // overflow), so hide this when profile is active.
+                    if activeTab != .profile {
+                        HomeHeader(
+                            onPlus: { showPlusMenu = true }
+                        )
+                        .padding(.top, 8)
+                    }
 
                     // Two swipe pages — blips (default) and profile. Camera is
                     // a tap-to-launch button on the bottom toggle, not a page,
@@ -65,7 +68,9 @@ struct HomeView: View {
                 }
 
                 #if DEBUG
-                debugBadge
+                if activeTab != .profile {
+                    debugBadge
+                }
                 #endif
             }
             .navigationDestination(for: Blip.self) { blip in
@@ -76,9 +81,6 @@ struct HomeView: View {
                 case .create: CreateBlipView()
                 case .join: JoinBlipView()
                 }
-            }
-            .sheet(isPresented: $showSettings) {
-                SettingsView()
             }
             .sheet(isPresented: $showReferralShare) {
                 ShareSheet(activityItems: [referralShareText])
@@ -128,7 +130,7 @@ struct HomeView: View {
             VStack(spacing: 24) {
                 VStack(spacing: 8) {
                     Text("who's in your day?")
-                        .font(.blip(size: 26, weight: .bold, design: .rounded))
+                        .font(BlipTypography.title)
                         .foregroundStyle(BlipColor.textPrimary)
                     Text("start a blip with friends — every hour,\nyou each post 2 seconds of your day.")
                         .font(BlipTypography.body)
@@ -155,23 +157,16 @@ struct HomeView: View {
 
     private var blipList: some View {
         ScrollView(showsIndicators: false) {
-            LazyVStack(spacing: 0) {
-                ForEach(Array(repo.blips.enumerated()), id: \.element.id) { index, blip in
+            LazyVStack(spacing: BlipSpacing.sm) {
+                ForEach(repo.blips) { blip in
                     NavigationLink(value: blip) {
                         BlipCard(
                             title: blip.name,
-                            subtitle: vm.subtitle(for: blip),
-                            memberCount: blip.members.count,
-                            progress: vm.progress(for: blip)
+                            cardColor: vm.cardColor(for: blip),
+                            members: vm.cardMembers(for: blip)
                         )
                     }
                     .buttonStyle(.plain)
-
-                    if index < repo.blips.count - 1 {
-                        Divider()
-                            .background(BlipColor.border)
-                            .padding(.leading, 64) // align under name, iMessage-style
-                    }
                 }
             }
             .padding(.horizontal, 20)
@@ -242,11 +237,14 @@ struct HomeView: View {
     // MARK: - Referral gate
 
     /// `true` while the user still has at least one unused blipchat slot.
+    /// Slots only constrain *creation* — joining via invite is unlimited.
     /// Defaults to "unlocked" when the profile hasn't streamed in yet so a
     /// fresh sign-in doesn't briefly show the locked state.
     private var canCreateBlip: Bool {
+        guard case .signedIn(let me) = auth.state else { return false }
         let unlocked = users.profile?.unlockedBlipSlots ?? 1
-        return repo.blips.count < unlocked
+        let createdCount = repo.blips.filter { $0.ownerUid == me }.count
+        return createdCount < unlocked
     }
 
     /// Locked-state share text — only the personal referral URL is needed
@@ -272,18 +270,10 @@ private enum CreationDestination: String, Identifiable {
 // MARK: - Header
 
 private struct HomeHeader: View {
-    let onSettings: () -> Void
     let onPlus: () -> Void
 
     var body: some View {
         HStack {
-            Button(action: onSettings) {
-                Image(systemName: "gearshape")
-                    .font(.blip(size: 20, weight: .medium))
-                    .foregroundStyle(BlipColor.textSecondary)
-                    .frame(minWidth: 44, minHeight: 44)
-            }
-            .accessibilityLabel("settings")
             Spacer()
             Button(action: onPlus) {
                 Image(systemName: "plus")

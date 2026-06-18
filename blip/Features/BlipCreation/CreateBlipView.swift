@@ -103,8 +103,6 @@ struct CreateBlipView: View {
                     }
                 }
             }
-
-            schedulePicker
         }
         .padding(.horizontal, 24)
     }
