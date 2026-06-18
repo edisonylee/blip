@@ -23,6 +23,10 @@ final class ClipsRepository: ObservableObject {
     private var listener: ListenerRegistration?
     private(set) var blipId: String?
 
+    // Blip configuration used for date/hour calculations
+    private var blipTimezone: TimeZone = .current
+    private var activeStartHour: Int = 0
+
     /// Raw clips from Firestore before block + hidden filtering.
     /// Kept so we can re-derive `clips` when the blocklist changes without re-listening.
     private var rawClips: [Clip] = []
@@ -74,6 +78,8 @@ final class ClipsRepository: ObservableObject {
         clipsByHour = [:]
         postersThisHour = []
         blipId = nil
+        blipTimezone = .current
+        activeStartHour = 0
     }
 
     private func recomputeFiltered() {
@@ -139,3 +145,4 @@ final class ClipsRepository: ObservableObject {
 
 // `Clip` is the existing model — alias to avoid import friction with `BlipClip`.
 typealias Clip = BlipClip
+

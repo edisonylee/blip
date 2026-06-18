@@ -184,6 +184,8 @@ final class BlipRepository: ObservableObject, BlipRepositoryProtocol, BlipMutati
         else { return nil }
         let inviteUrl = (data["inviteUrl"] as? String).flatMap(URL.init(string:))
         let adminUids = (data["adminUids"] as? [String]) ?? [ownerUid]
+        let activeStartHour = data["activeStartHour"] as? Int ?? 4
+        let activeEndHour = data["activeEndHour"] as? Int ?? 4
         return Blip(
             id: snapshot.documentID,
             name: name,
@@ -194,6 +196,8 @@ final class BlipRepository: ObservableObject, BlipRepositoryProtocol, BlipMutati
             joinCode: joinCode,
             inviteUrl: inviteUrl,
             timezoneIdentifier: tz,
+            activeStartHour: activeStartHour,
+            activeEndHour: activeEndHour,
             createdAt: ts.dateValue()
         )
     }
@@ -299,6 +303,7 @@ final class BlipRepository: ObservableObject, BlipRepositoryProtocol, BlipMutati
 enum BlipRepoError: LocalizedError {
     case emptyName
     case invalidSize
+    case invalidHours
     case emptyCode
     case codeNotFound
     case blipFull
@@ -311,6 +316,7 @@ enum BlipRepoError: LocalizedError {
         switch self {
         case .emptyName: return "name your blip first."
         case .invalidSize: return "blip size must be 2 to 12."
+        case .invalidHours: return "active hours must be between 0 and 23."
         case .emptyCode: return "enter a code."
         case .codeNotFound: return "no blip with that code."
         case .blipFull: return "this blip is full."

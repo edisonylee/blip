@@ -143,7 +143,7 @@ struct CreateBlipView: View {
                 .foregroundStyle(BlipColor.textTertiary)
                 .textCase(.uppercase)
             Picker(title, selection: selection) {
-                ForEach(vm.hourOptions, id: \.self) { hour in
+                ForEach(0..<24, id: \.self) { hour in
                     Text(BlipHour.hourLabel(hour)).tag(hour)
                 }
             }
@@ -157,7 +157,7 @@ struct CreateBlipView: View {
     }
 
     private var timezoneLabel: String {
-        vm.timezoneIdentifier.replacingOccurrences(of: "_", with: " ")
+        TimeZone.current.identifier.replacingOccurrences(of: "_", with: " ")
     }
 
     // MARK: - Footer

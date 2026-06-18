@@ -4,14 +4,14 @@ import SwiftUI
 
 /// Rounded-rect card for a single blipchat. Background color is caller-supplied
 /// so each room can have a distinct identity. Solo blips show a white-on-black
-/// avatar; group blips show an overlapping AvatarRow whose stroke matches the
+/// avatar; group blips show up to 3 avatars plus an overflow count badge whose stroke matches the
 /// card color so the circles read as part of the surface.
 struct BlipCard: View {
     let title: String
     let cardColor: Color
     let members: [BlipCardMember]
 
-    private static let cardHeight:       CGFloat = 110
+    private static let cardHeight:       CGFloat = 78
     private static let soloAvatarSize:   CGFloat = 32
     private static let memberAvatarSize: CGFloat = 24
 
@@ -33,20 +33,35 @@ struct BlipCard: View {
 
     @ViewBuilder
     private var memberCluster: some View {
-        if members.count == 1, let solo = members.first {
-            AvatarView(
-                initials: solo.initials,
-                size: Self.soloAvatarSize,
-                strokeColor: cardColor,
-                style: .light
-            )
-        } else if !members.isEmpty {
-            AvatarRow(
-                members: members.map { AvatarRowMember(id: $0.id, initials: $0.initials, hasPosted: false) },
-                maxVisible: 5,
-                size: Self.memberAvatarSize,
-                strokeColor: cardColor
-            )
+        // Hide avatars when only admin or single-person (1 member) — caller passes members accordingly.
+        if members.count <= 1 {
+            EmptyView()
+        } else {
+            let maxVisible = 3
+            let visible = Array(members.prefix(maxVisible))
+            let remaining = members.count - visible.count
+            HStack(spacing: -Self.memberAvatarSize * 0.25) {
+                ForEach(visible) { m in
+                    AvatarView(
+                        initials: m.initials,
+                        size: Self.memberAvatarSize,
+                        strokeColor: cardColor,
+                        style: .light
+                    )
+                }
+                if remaining > 0 {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.85))
+                            .overlay(Circle().stroke(cardColor, lineWidth: BlipSpacing.avatarStroke))
+                        Text("+\(remaining)")
+                            .font(.blip(size: Self.memberAvatarSize * 0.40, weight: .semibold))
+                            .foregroundStyle(.black)
+                    }
+                    .frame(width: Self.memberAvatarSize, height: Self.memberAvatarSize)
+                    .padding(.leading, Self.memberAvatarSize * 0.40)
+                }
+            }
         }
     }
 }

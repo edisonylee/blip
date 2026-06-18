@@ -68,24 +68,18 @@ final class ClipUploader: ObservableObject, ClipUploading {
         let durationSeconds = await Self.probeDuration(fileURL: fileURL)
 
         // 3. Write clip doc into each target blip's clips subcollection.
-        // Deterministic clipId per (uid, hour) — repost within the hour replaces
-        // the prior doc. On re-record, we preserve `hidden` and `reportCount`
-        // so a re-record can't un-hide a previously flagged clip; the Firestore
-        // rule (`/clips/{clipId}` update) enforces the same invariant server-side.
-        let clipId = "\(uid)_\(hour)"
-        let basePayload: [String: Any] = {
-            var p: [String: Any] = [
-        // Deterministic clipId per (uid, hour) — repost within the hour replaces the prior doc.
-        let batch = db.batch()
         let sharedToBlipIds = destinations.map(\.id)
         var clipIdByBlipId: [String: String] = [:]
+
         for destination in destinations {
             let slot = Self.slot(for: destination, at: capturedAt)
             let clipId = "\(uid)_\(slot.hour)"
             clipIdByBlipId[destination.id] = clipId
+
             let ref = db.collection("blips").document(destination.id)
                 .collection("days").document(slot.dateKey)
                 .collection("clips").document(clipId)
+
             var payload: [String: Any] = [
                 "uid": uid,
                 "hour": slot.hour,
@@ -93,32 +87,27 @@ final class ClipUploader: ObservableObject, ClipUploading {
                 "caption": caption as Any,
                 "createdAt": Timestamp(date: capturedAt),
                 "sharedToBlipIds": sharedToBlipIds,
-                "durationSeconds": durationSeconds,
+                "durationSeconds": durationSeconds
             ]
-            if let thumbnailUrlString { p["thumbnailUrl"] = thumbnailUrlString }
-            return p
-        }()
+            if let thumbnailUrlString { payload["thumbnailUrl"] = thumbnailUrlString }
 
-        for blipId in sharedToBlipIds {
-            let ref = db.collection("blips").document(blipId)
-                .collection("days").document(dateKey)
-                .collection("clips").document(clipId)
             let existing = try? await ref.getDocument()
             if existing?.exists == true {
                 // Re-record: skip moderation fields. The rule rejects any update
                 // that mutates `hidden` or `reportCount` from a non-server actor.
-                try await ref.updateData(basePayload)
+                try await ref.updateData(payload)
             } else {
-                var fresh = basePayload
-                fresh["hidden"] = false
-                fresh["reportCount"] = 0
-                try await ref.setData(fresh)
+                payload["hidden"] = false
+                payload["reportCount"] = 0
+                try await ref.setData(payload)
             }
         }
 
         // 4. Post a clip card message to each blip's group chat.
         let senderName = await fetchSenderName(uid: uid)
         for destination in destinations {
+            let slot = Self.slot(for: destination, at: capturedAt)
+            let clipId = clipIdByBlipId[destination.id] ?? "\(uid)_\(slot.hour)"
             MessagesRepository.postClipMessage(
                 blipId: destination.id,
                 blipName: destination.name,
@@ -127,7 +116,7 @@ final class ClipUploader: ObservableObject, ClipUploading {
                 thumbnailUrl: thumbnailUrlString,
                 videoUrl: videoUrlString,
                 caption: caption,
-                clipId: clipIdByBlipId[destination.id] ?? "\(uid)_\(primarySlot.hour)"
+                clipId: clipId
             )
         }
 

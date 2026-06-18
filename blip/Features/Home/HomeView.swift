@@ -24,16 +24,6 @@ struct HomeView: View {
                 BlipColor.background.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    // Home header (wordmark + plus) is blips-only chrome —
-                    // the profile tab owns its own top bar (wordmark + share +
-                    // overflow), so hide this when profile is active.
-                    if activeTab != .profile {
-                        HomeHeader(
-                            onPlus: { showPlusMenu = true }
-                        )
-                        .padding(.top, 8)
-                    }
-
                     // Two swipe pages — blips (default) and profile. Camera is
                     // a tap-to-launch button on the bottom toggle, not a page,
                     // so the existing fullScreenCover capture flow stays intact.
@@ -72,6 +62,26 @@ struct HomeView: View {
                     debugBadge
                 }
                 #endif
+
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        if activeTab != .profile && !showPlusMenu {
+                            Button(action: { showPlusMenu = true }) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundStyle(BlipColor.accentNeutralOn)
+                                    .frame(width: 56, height: 56)
+                                    .background(BlipColor.accentNeutral, in: Circle())
+                                    .shadow(color: Color.black.opacity(0.25), radius: 8, x: 0, y: 4)
+                            }
+                            .accessibilityLabel("create or join a blip")
+                            .padding(.trailing, 20)
+                            .padding(.bottom, 24)
+                        }
+                    }
+                }
             }
             .navigationDestination(for: Blip.self) { blip in
                 BlipDetailView(blip: blip)
@@ -265,27 +275,6 @@ struct HomeView: View {
 private enum CreationDestination: String, Identifiable {
     case create, join
     var id: String { rawValue }
-}
-
-// MARK: - Header
-
-private struct HomeHeader: View {
-    let onPlus: () -> Void
-
-    var body: some View {
-        HStack {
-            Spacer()
-            Button(action: onPlus) {
-                Image(systemName: "plus")
-                    .font(.blip(size: 18, weight: .semibold))
-                    .foregroundStyle(BlipColor.textPrimary)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .background(BlipColor.surface, in: Circle())
-            }
-            .accessibilityLabel("create or join a blip")
-        }
-        .padding(.horizontal, 16)
-    }
 }
 
 // MARK: - Bottom tab toggle

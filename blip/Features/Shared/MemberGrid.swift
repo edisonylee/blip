@@ -133,6 +133,7 @@ struct MemberGrid: View {
 
     var body: some View {
         let seats = computeSeats()
+        let layout = MemberGridLayout.layout(for: seats.count)
 
         // Each cell is positioned absolutely in canvas-pixel coordinates and
         // scaled to the rendered container size. This handles every layout
@@ -456,3 +457,4 @@ private struct ClipPlayerView: UIViewControllerRepresentable {
         deinit { tearDown() }
     }
 }
+

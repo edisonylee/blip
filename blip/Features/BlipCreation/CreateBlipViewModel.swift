@@ -4,6 +4,8 @@ import Foundation
 final class CreateBlipViewModel: ObservableObject {
     @Published var name: String = ""
     @Published var size: Int = 4
+    @Published var activeStartHour: Int = 4
+    @Published var activeEndHour: Int = 4
     @Published var isSubmitting = false
     @Published var errorMessage: String?
     @Published var createdBlip: Blip?
@@ -23,7 +25,9 @@ final class CreateBlipViewModel: ObservableObject {
                     name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                     size: size,
                     ownerUid: uid,
-                    timezoneIdentifier: TimeZone.current.identifier
+                    timezoneIdentifier: TimeZone.current.identifier,
+                    activeStartHour: activeStartHour,
+                    activeEndHour: activeEndHour
                 )
             } catch {
                 errorMessage = error.localizedDescription
