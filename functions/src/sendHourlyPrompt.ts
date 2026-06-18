@@ -2,6 +2,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 import { isQuietHourForUser } from "./utils/quietHours";
+import { hourInTimezone, isActiveHour, scheduleFrom } from "./utils/blipSchedule";
 
 /**
  * Scheduled hourly. For each user with an active blip membership and an FCM token,
@@ -20,13 +21,30 @@ export const sendHourlyPrompt = onSchedule(
     const db = admin.firestore();
     const messaging = admin.messaging();
 
-    const usersSnap = await db.collection("users").get();
+    const [usersSnap, blipsSnap] = await Promise.all([
+      db.collection("users").get(),
+      db.collection("blips").get(),
+    ]);
+    const activeMemberUids = new Set<string>();
+    const now = new Date();
+    for (const blipDoc of blipsSnap.docs) {
+      const blip = blipDoc.data();
+      const schedule = scheduleFrom(blip);
+      const groupHour = hourInTimezone(now, schedule.timezoneIdentifier);
+      if (!isActiveHour(groupHour, schedule.activeStartHour, schedule.activeEndHour)) {
+        continue;
+      }
+      for (const memberUid of (blip.members as string[] | undefined) ?? []) {
+        activeMemberUids.add(memberUid);
+      }
+    }
     let skippedQuiet = 0;
     let skippedNoToken = 0;
     let sent = 0;
 
     const sends: Promise<unknown>[] = [];
     for (const doc of usersSnap.docs) {
+      if (!activeMemberUids.has(doc.id)) continue;
       const data = doc.data();
       const tokens: string[] = data.fcmTokens ?? [];
       if (tokens.length === 0) {
@@ -55,6 +73,7 @@ export const sendHourlyPrompt = onSchedule(
     await Promise.all(sends);
     logger.info("sendHourlyPrompt done", {
       total: usersSnap.size,
+      activeMembers: activeMemberUids.size,
       sent,
       skippedQuiet,
       skippedNoToken,

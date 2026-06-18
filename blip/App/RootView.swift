@@ -64,6 +64,8 @@ struct RootView: View {
         joinCode: "debug",
         inviteUrl: nil,
         timezoneIdentifier: TimeZone.current.identifier,
+        activeStartHour: 4,
+        activeEndHour: 4,
         createdAt: Date()
     )
     #endif

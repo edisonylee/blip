@@ -23,11 +23,16 @@ final class NudgeService: NudgeServicing, ObservableObject {
     func sendNudge(
         blipId: String,
         blipTimezone: String,
+        activeStartHour: Int,
+        activeEndHour: Int,
         senderUid: String,
         nudgeeUid: String
     ) async throws {
         let hour = BlipHour.currentHour(in: blipTimezone)
-        let dateKey = BlipHour.currentDateKey(in: blipTimezone)
+        guard BlipHour.isActive(hour: hour, startHour: activeStartHour, endHour: activeEndHour) else {
+            return
+        }
+        let dateKey = BlipHour.currentDateKey(in: blipTimezone, startHour: activeStartHour)
         let nudgeId = "\(dateKey)_\(hour)_\(senderUid)_\(nudgeeUid)"
 
         do {

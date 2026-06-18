@@ -11,14 +11,14 @@ protocol ClipUploading {
     var progress: Double { get }
 
     /// Upload the local recording to Storage and write a clip doc into every
-    /// blip in `sharedToBlipIds` (which must contain `primaryBlipId`).
+    /// destination using that blip's shared timezone and daily window.
     /// Re-posting within the same hour replaces the prior doc per the
     /// deterministic `{uid}_{hour}` clipId in `ClipUploader`.
     func upload(
         fileURL: URL,
         uid: String,
-        primaryBlipId: String,
-        sharedToBlipIds: [String],
+        primaryBlip: Blip,
+        destinations: [Blip],
         caption: String?
     ) async throws
 }

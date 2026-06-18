@@ -11,7 +11,14 @@ protocol BlipRepositoryProtocol: ObservableObject {
 
     func startListening(for uid: String)
     func stopListening()
-    func createBlip(name: String, size: Int, ownerUid: String, timezoneIdentifier: String) async throws -> Blip
+    func createBlip(
+        name: String,
+        size: Int,
+        ownerUid: String,
+        timezoneIdentifier: String,
+        activeStartHour: Int,
+        activeEndHour: Int
+    ) async throws -> Blip
     func joinBlip(code: String, uid: String) async throws -> Blip
     func updateMemberOrder(blipId: String, members: [String]) async throws
 }

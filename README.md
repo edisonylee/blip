@@ -15,7 +15,8 @@ Pre-MVP. Phase B in progress (capture + clip pipeline + chat + export). US-only 
 3. Hours where **no** member contributed are auto-skipped on export.
 4. Anyone can **export** the blip at any time → a single stitched video.
 5. The grid layout adapts to participant count: 1×1, 2×1, 2×2, growing for larger groups.
-6. Day boundary is **4 AM in the blip's timezone** (set at creation, defaults to creator's TZ).
+6. Each blip has one shared timezone and a creator-selected daily recording window.
+   The start hour anchors its day key; equal start/end means a 24-hour window.
 
 ## Stack
 

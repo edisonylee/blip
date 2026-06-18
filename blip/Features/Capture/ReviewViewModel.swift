@@ -25,7 +25,7 @@ final class ReviewViewModel: ObservableObject {
         else { sendToBlipIds.insert(id) }
     }
 
-    func post(uid: String, fileURL: URL) async {
+    func post(uid: String, fileURL: URL, availableBlips: [Blip]) async {
         errorMessage = nil
         do {
             // Pre-flight membership check guards against a stale local blip snapshot.
@@ -41,11 +41,20 @@ final class ReviewViewModel: ObservableObject {
                 return
             }
 
+            let blipsById = Dictionary(uniqueKeysWithValues: availableBlips.map { ($0.id, $0) })
+            let destinations = sendToBlipIds.compactMap { id in
+                id == primaryBlip.id ? primaryBlip : blipsById[id]
+            }
+            guard destinations.count == sendToBlipIds.count else {
+                errorMessage = "one of those blips is no longer available."
+                return
+            }
+
             try await uploader.upload(
                 fileURL: fileURL,
                 uid: uid,
-                primaryBlipId: primaryBlip.id,
-                sharedToBlipIds: Array(sendToBlipIds),
+                primaryBlip: primaryBlip,
+                destinations: destinations,
                 caption: caption.isEmpty ? nil : caption
             )
         } catch {

@@ -11,6 +11,8 @@ protocol NudgeServicing {
     func sendNudge(
         blipId: String,
         blipTimezone: String,
+        activeStartHour: Int,
+        activeEndHour: Int,
         senderUid: String,
         nudgeeUid: String
     ) async throws

@@ -51,10 +51,17 @@ service cloud.firestore {
                     && request.auth.uid in request.resource.data.members
                     && request.resource.data.size is int
                     && request.resource.data.size >= 1
-                    && request.resource.data.size <= 10;
+                    && request.resource.data.size <= 12
+                    && request.resource.data.activeStartHour is int
+                    && request.resource.data.activeStartHour >= 0
+                    && request.resource.data.activeStartHour <= 23
+                    && request.resource.data.activeEndHour is int
+                    && request.resource.data.activeEndHour >= 0
+                    && request.resource.data.activeEndHour <= 23;
 
       allow update: if request.auth != null
                     && (request.auth.uid == resource.data.ownerUid
+                        || isJoiningSelf(resource.data, request.resource.data)
                         || isLeavingSelf(resource.data.members, request.resource.data.members));
 
       allow delete: if request.auth != null
@@ -78,8 +85,8 @@ service cloud.firestore {
                         && request.resource.data.hour >= 0
                         && request.resource.data.hour <= 23
                         && request.resource.data.durationSeconds is number
-                        && request.resource.data.durationSeconds >= 0.5
-                        && request.resource.data.durationSeconds <= 10.0;
+                        && request.resource.data.durationSeconds >= 1.8
+                        && request.resource.data.durationSeconds <= 2.5;
 
           allow update: if request.auth != null
                         && request.auth.uid == resource.data.uid
@@ -114,6 +121,18 @@ service cloud.firestore {
                       && request.resource.data.nudgeeUid in get(/databases/$(database)/documents/blips/$(blipId)).data.members;
         allow update, delete: if false;
       }
+    }
+
+    // Reports are create-only for the signed-in reporter. Moderation functions
+    // use the Admin SDK to review and update them.
+    match /reports/{reportId} {
+      allow create: if request.auth != null
+                    && request.resource.data.reporterId == request.auth.uid
+                    && request.resource.data.clipPath is string
+                    && request.resource.data.clipId is string
+                    && request.resource.data.authorId is string
+                    && request.resource.data.category is string;
+      allow read, update, delete: if false;
     }
 
     // Friend requests — top-level. Doc id is deterministic — `{fromUid}_{toUid}`
@@ -177,6 +196,15 @@ service cloud.firestore {
     return request.auth.uid in oldMembers
         && !(request.auth.uid in newMembers)
         && newMembers.size() == oldMembers.size() - 1;
+  }
+
+  function isJoiningSelf(oldData, newData) {
+    return !(request.auth.uid in oldData.members)
+        && request.auth.uid in newData.members
+        && newData.members.size() == oldData.members.size() + 1
+        && newData.members.size() <= oldData.size
+        && newData.members.size() <= 12
+        && newData.diff(oldData).affectedKeys().hasOnly(['members']);
   }
 
   // Only allow caption edits via the long-press menu (screen-10 "edit caption").

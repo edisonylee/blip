@@ -7,6 +7,7 @@ import SwiftUI
 struct ArchiveView: View {
     let blip: Blip
 
+    @EnvironmentObject private var auth: AuthService
     @StateObject private var repo = ArchiveRepository()
     @State private var playing: BlipDay?
 
@@ -37,7 +38,10 @@ struct ArchiveView: View {
         }
         .toolbarBackground(BlipColor.background, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .task(id: blip.id) { repo.startListening(blipId: blip.id) }
+        .task(id: blip.id) {
+            guard case .signedIn(let uid) = auth.state else { return }
+            repo.startListening(blip: blip, uid: uid)
+        }
         .sheet(item: $playing) { day in
             if let url = day.stitchedVideoUrl {
                 ArchivePlayerSheet(dateKey: day.id, url: url)

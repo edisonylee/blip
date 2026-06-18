@@ -74,7 +74,8 @@ struct ExportView: View {
                                 onInvite: {},
                                 isAuthor: { _ in false },
                                 onDelete: { _ in },
-                                onEditCaption: { _ in }
+                                onEditCaption: { _ in },
+                                showsOpenSeats: false
                             )
                         }
                     }
@@ -290,12 +291,13 @@ struct ExportView: View {
         return nil
     }
 
-    /// Hours of the blip-day (4AM-anchored) sorted chronologically. We render
+    /// Hours of the configured blip-day sorted chronologically. We render
     /// every hour that has at least one clip — the export drops empty hours, so
     /// hiding them from the preview keeps signal:noise high.
     private var hoursWithClips: [Int] {
         clips.clipsByHour.keys.sorted { lhs, rhs in
-            ((lhs - 4 + 24) % 24) < ((rhs - 4 + 24) % 24)
+            BlipHour.sortIndex(for: lhs, startHour: blip.activeStartHour)
+                < BlipHour.sortIndex(for: rhs, startHour: blip.activeStartHour)
         }
     }
 

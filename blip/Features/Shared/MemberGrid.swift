@@ -3,32 +3,32 @@ import SwiftUI
 
 // MARK: - Grid layout (Swift mirror of functions/src/utils/gridLayout.ts)
 
-/// Cell layout derived from `blip.size`, matching the export pipeline so the
-/// in-app preview is positionally faithful to the stitched output.
-/// Once the group is full, every seat in the preview is also a seat in the export.
+/// Cell layout matching the server export: one full-width column for one or two
+/// members, then two seats per row through the 12-member cap.
 struct MemberGridLayout {
     let cols: Int
     let rows: Int
     let cellAspect: CGFloat  // width / height — matches export cell pixel ratio
+    let centersFinalSeat: Bool
 
-    static func layout(for memberCapacity: Int) -> MemberGridLayout {
-        // Stay single-column up to 5 so landscape clips fill full-width rows.
-        // Past 5, fall to two columns. Mirrors functions/src/utils/gridLayout.ts —
-        // keep both in sync so preview == export.
+    static func layout(for seatCount: Int) -> MemberGridLayout {
+        let count = min(12, max(1, seatCount))
         let (cols, rows): (Int, Int)
-        switch memberCapacity {
-        case ...1:    (cols, rows) = (1, 1)
-        case 2...5:   (cols, rows) = (1, memberCapacity)
-        case 6:       (cols, rows) = (2, 3)
-        case 7...8:   (cols, rows) = (2, 4)
-        case 9...10:  (cols, rows) = (2, 5)
-        default:      (cols, rows) = (3, 4)  // 11–12 → 3×4 = 12 slots max
+        if count <= 2 {
+            (cols, rows) = (1, count)
+        } else {
+            (cols, rows) = (2, Int(ceil(Double(count) / 2.0)))
         }
         let canvasWidth: CGFloat = 1080
         let canvasHeight: CGFloat = 1920
         let cellW = canvasWidth / CGFloat(cols)
         let cellH = canvasHeight / CGFloat(rows)
-        return MemberGridLayout(cols: cols, rows: rows, cellAspect: cellW / cellH)
+        return MemberGridLayout(
+            cols: cols,
+            rows: rows,
+            cellAspect: cellW / cellH,
+            centersFinalSeat: cols == 2 && count.isMultiple(of: 2) == false
+        )
     }
 }
 
@@ -67,31 +67,51 @@ struct MemberGrid: View {
     /// callers that don't yet plumb `UserProfilesRepository` keep working.
     /// BlipDetailView passes `profiles.initials(for:)` to render real names.
     var initialsForUid: (String) -> String = { String($0.prefix(2)).uppercased() }
+    /// Detail screens can show capacity as invite seats. Export preview passes
+    /// false so its geometry is based on actual members, exactly like ffmpeg.
+    var showsOpenSeats = true
 
     var body: some View {
-        let layout = MemberGridLayout.layout(for: blip.size)
         let seats = computeSeats()
+        let layout = MemberGridLayout.layout(for: seats.count)
 
-        LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: layout.cols),
-            spacing: 4
-        ) {
-            // Index-based ids: seat positions are stable per blip.size, so this
-            // lets SwiftUI update existing cells in-place instead of tearing down
-            // the AVPlayer-backed video cells on every state change.
-            ForEach(Array(seats.enumerated()), id: \.offset) { _, seat in
-                SeatView(
-                    seat: seat,
-                    cellAspect: layout.cellAspect,
-                    onRecord: onRecord,
-                    onInvite: onInvite,
-                    isAuthor: isAuthor,
-                    onDelete: onDelete,
-                    onEditCaption: onEditCaption,
-                    onNudge: onNudge
-                )
+        Grid(horizontalSpacing: 4, verticalSpacing: 4) {
+            ForEach(0..<layout.rows, id: \.self) { row in
+                let start = row * layout.cols
+                let end = min(start + layout.cols, seats.count)
+                let rowSeats = Array(seats[start..<end])
+
+                GridRow {
+                    if layout.cols == 1 {
+                        seatView(rowSeats[0], layout: layout)
+                            .gridCellColumns(4)
+                    } else if rowSeats.count == 1 && layout.centersFinalSeat {
+                        Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                        seatView(rowSeats[0], layout: layout)
+                            .gridCellColumns(2)
+                        Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
+                    } else {
+                        ForEach(Array(rowSeats.enumerated()), id: \.offset) { _, seat in
+                            seatView(seat, layout: layout)
+                                .gridCellColumns(2)
+                        }
+                    }
+                }
             }
         }
+    }
+
+    private func seatView(_ seat: Seat, layout: MemberGridLayout) -> some View {
+        SeatView(
+            seat: seat,
+            cellAspect: layout.cellAspect,
+            onRecord: onRecord,
+            onInvite: onInvite,
+            isAuthor: isAuthor,
+            onDelete: onDelete,
+            onEditCaption: onEditCaption,
+            onNudge: onNudge
+        )
     }
 
     /// One seat per `blip.size` slot, in stable order:
@@ -122,8 +142,10 @@ struct MemberGrid: View {
             }
         }
 
-        let unfilled = max(0, blip.size - blip.members.count)
-        for _ in 0..<unfilled { seats.append(.invite) }
+        if showsOpenSeats {
+            let unfilled = max(0, blip.size - blip.members.count)
+            for _ in 0..<unfilled { seats.append(.invite) }
+        }
 
         return seats
     }

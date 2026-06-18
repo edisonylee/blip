@@ -147,10 +147,10 @@ struct CaptureGlobalView: View {
         switch session.state {
         case .idle:
             VStack(spacing: 8) {
-                Text("tap to record")
+                Text(hasActiveBlip ? "tap to record" : "no blips are open")
                     .font(BlipTypography.title)
                     .foregroundStyle(BlipColor.textPrimary)
-                Text("a 2s clip — pick who sees it next")
+                Text(hasActiveBlip ? "a 2s clip — pick who sees it next" : "check each group's daily window")
                     .font(BlipTypography.caption)
                     .foregroundStyle(BlipColor.textPrimary.opacity(0.7))
             }
@@ -208,13 +208,19 @@ struct CaptureGlobalView: View {
     // MARK: - Helpers
 
     private var disableRecord: Bool {
+        if !hasActiveBlip { return true }
         switch session.state {
         case .recording, .denied, .unavailable, .error: return true
         case .idle, .ready: return false
         }
     }
 
+    private var hasActiveBlip: Bool {
+        repo.blips.contains(where: { $0.isActive() })
+    }
+
     private func onRecordTapped() async {
+        guard hasActiveBlip else { return }
         switch session.state {
         case .idle:
             // First tap: request permissions, configure, start running, then record.
@@ -248,7 +254,7 @@ struct CaptureGlobalView: View {
 
     private func handleSend() {
         Task {
-            let success = await vm.send(uid: uid)
+            let success = await vm.send(uid: uid, blips: repo.blips)
             if success {
                 showPicker = false
                 onSent()

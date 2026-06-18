@@ -4,11 +4,15 @@ import Foundation
 final class CreateBlipViewModel: ObservableObject {
     @Published var name: String = ""
     @Published var size: Int = 4
+    @Published var activeStartHour: Int = 4
+    @Published var activeEndHour: Int = 4
     @Published var isSubmitting = false
     @Published var errorMessage: String?
     @Published var createdBlip: Blip?
 
-    let sizeOptions = Array(2...10)
+    let sizeOptions = Array(2...12)
+    let hourOptions = Array(0...23)
+    let timezoneIdentifier = TimeZone.current.identifier
 
     var isFormValid: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -23,7 +27,9 @@ final class CreateBlipViewModel: ObservableObject {
                     name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                     size: size,
                     ownerUid: uid,
-                    timezoneIdentifier: TimeZone.current.identifier
+                    timezoneIdentifier: timezoneIdentifier,
+                    activeStartHour: activeStartHour,
+                    activeEndHour: activeEndHour
                 )
             } catch {
                 errorMessage = error.localizedDescription
@@ -39,5 +45,11 @@ final class CreateBlipViewModel: ObservableObject {
         case 5...7: return "squad"
         default: return "big group"
         }
+    }
+
+    var scheduleDescription: String {
+        if activeStartHour == activeEndHour { return "24 hours" }
+        let count = (activeEndHour - activeStartHour + 24) % 24
+        return "\(count) hour\(count == 1 ? "" : "s") daily"
     }
 }

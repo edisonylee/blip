@@ -15,9 +15,10 @@ struct CreateBlipView: View {
 
                 VStack(spacing: 0) {
                     header
-                    Spacer()
-                    content
-                    Spacer()
+                    ScrollView {
+                        content
+                            .padding(.vertical, 28)
+                    }
                     footer
                 }
             }
@@ -46,7 +47,7 @@ struct CreateBlipView: View {
             Text("name your crew")
                 .font(.blip(size: 28, weight: .black, design: .rounded))
                 .foregroundStyle(BlipColor.textPrimary)
-            Text("pick a name and how many people can join")
+            Text("pick a name, crew size, and daily blip window")
                 .font(.blip(size: 14))
                 .foregroundStyle(BlipColor.textTertiary)
                 .multilineTextAlignment(.center)
@@ -55,7 +56,7 @@ struct CreateBlipView: View {
         .padding(.horizontal, 24)
     }
 
-    // MARK: - Name + size
+    // MARK: - Name + size + schedule
 
     private var content: some View {
         VStack(spacing: 28) {
@@ -102,8 +103,63 @@ struct CreateBlipView: View {
                     }
                 }
             }
+
+            schedulePicker
         }
         .padding(.horizontal, 24)
+    }
+
+    private var schedulePicker: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("daily window")
+                    .font(.blip(size: 11, weight: .semibold))
+                    .foregroundStyle(BlipColor.textTertiary)
+                    .textCase(.uppercase)
+                    .tracking(0.8)
+                Spacer()
+                Text(vm.scheduleDescription)
+                    .font(.blip(size: 13))
+                    .foregroundStyle(BlipColor.textPrimary)
+            }
+
+            HStack(spacing: 10) {
+                hourMenu(title: "from", selection: $vm.activeStartHour)
+                Image(systemName: "arrow.right")
+                    .font(.blip(size: 13, weight: .semibold))
+                    .foregroundStyle(BlipColor.textTertiary)
+                hourMenu(title: "to", selection: $vm.activeEndHour)
+            }
+
+            Text("everyone records on \(timezoneLabel). the end hour is when recording closes.")
+                .font(.blip(size: 12))
+                .foregroundStyle(BlipColor.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func hourMenu(title: String, selection: Binding<Int>) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.blip(size: 10, weight: .semibold))
+                .foregroundStyle(BlipColor.textTertiary)
+                .textCase(.uppercase)
+            Picker(title, selection: selection) {
+                ForEach(vm.hourOptions, id: \.self) { hour in
+                    Text(BlipHour.hourLabel(hour)).tag(hour)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(BlipColor.textPrimary)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, 12)
+            .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var timezoneLabel: String {
+        vm.timezoneIdentifier.replacingOccurrences(of: "_", with: " ")
     }
 
     // MARK: - Footer

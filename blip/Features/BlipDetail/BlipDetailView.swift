@@ -27,6 +27,8 @@ struct BlipDetailView: View {
 
             ScrollView {
                 VStack(spacing: 16) {
+                    scheduleStatus
+
                     HourSlider(
                         hours: todayHours,
                         currentHour: currentHour,
@@ -41,8 +43,8 @@ struct BlipDetailView: View {
                         hour: selectedHour,
                         clipsForHour: clips.clipsByHour[selectedHour] ?? [],
                         currentUid: currentUid,
-                        isCurrentHour: selectedHour == currentHour,
-                        onRecord: { showCapture = true },
+                        isCurrentHour: isWindowActive && selectedHour == currentHour,
+                        onRecord: { if isWindowActive { showCapture = true } },
                         onInvite: { showInviteSheet = true },
                         isAuthor: isAuthor(of:),
                         onDelete: { clip in Task { try? await clips.deleteClip(clip) } },
@@ -162,6 +164,8 @@ struct BlipDetailView: View {
             try? await nudges.sendNudge(
                 blipId: blip.id,
                 blipTimezone: blip.timezoneIdentifier,
+                activeStartHour: blip.activeStartHour,
+                activeEndHour: blip.activeEndHour,
                 senderUid: me,
                 nudgeeUid: nudgeeUid
             )
@@ -183,21 +187,42 @@ struct BlipDetailView: View {
     }
 
     private var currentHour: Int {
-        Calendar.current.component(.hour, from: Date())
+        BlipHour.currentHour(in: blip.timezoneIdentifier)
     }
+
+    private var isWindowActive: Bool { blip.isActive() }
 
     private var selectedHour: Int {
         selectedHourOverride ?? currentHour
     }
 
     /// Slider nodes for today: every recorded hour plus the current hour,
-    /// sorted in chronological order anchored to the 4AM blip-day boundary.
+    /// sorted in chronological order anchored to the configured group start.
     /// With no past recordings the slider degenerates to a single node (now).
     private var todayHours: [Int] {
-        let recorded = Set(clips.clipsByHour.keys)
-        let nodes = recorded.union([currentHour])
+        let recorded = Set(clips.clipsByHour.keys.filter {
+            BlipHour.isActive(hour: $0, startHour: blip.activeStartHour, endHour: blip.activeEndHour)
+        })
+        let nodes = isWindowActive ? recorded.union([currentHour]) : recorded
+        if nodes.isEmpty { return [blip.activeStartHour] }
         return nodes.sorted { lhs, rhs in
-            ((lhs - 4 + 24) % 24) < ((rhs - 4 + 24) % 24)
+            BlipHour.sortIndex(for: lhs, startHour: blip.activeStartHour)
+                < BlipHour.sortIndex(for: rhs, startHour: blip.activeStartHour)
+        }
+    }
+
+    private var scheduleStatus: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(isWindowActive ? BlipColor.accent : BlipColor.textTertiary)
+                .frame(width: 7, height: 7)
+            Text(isWindowActive ? "recording open" : "recording closed")
+                .font(.blip(size: 12, weight: .semibold))
+                .foregroundStyle(BlipColor.textSecondary)
+            Spacer()
+            Text("\(BlipHour.hourLabel(blip.activeStartHour))–\(BlipHour.hourLabel(blip.activeEndHour))")
+                .font(.blip(size: 12))
+                .foregroundStyle(BlipColor.textTertiary)
         }
     }
 }

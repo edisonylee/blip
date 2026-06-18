@@ -1,16 +1,15 @@
 /**
- * Per-hour grid layout. Up to 5 members the grid stays single-column so each
- * landscape clip gets a full-width row (looks much better than cramming
- * landscape footage into square cells). Past 5 it splits into two columns.
+ * Per-hour portrait grid layout, based on actual group membership.
  *
  *   1    -> 1×1 (full canvas)
  *   2    -> 1×2
- *   3    -> 1×3
- *   4    -> 1×4
- *   5    -> 1×5
+ *   3    -> 2×2 (last seat centered)
+ *   4    -> 2×2
+ *   5    -> 2×3 (last seat centered)
  *   6    -> 2×3
- *   7-8  -> 2×4
- *   9-10 -> 2×5  (hard cap at 10 members per blip)
+ *   7-8  -> 2×4 (last seat centered for 7)
+ *   9-10 -> 2×5 (last seat centered for 9)
+ *   11-12 -> 2×6 (last seat centered for 11)
  *
  * Inputs are pre-scaled to cellWidth × cellHeight before xstack, so positions
  * are literal pixel offsets (no `w0/h0` variables needed).
@@ -30,11 +29,16 @@ const CANVAS_HEIGHT = 1920;
 export function gridFor(count: number): GridSpec {
   let cols: number;
   let rows: number;
-  if (count <= 1)      { cols = 1; rows = 1; }
-  else if (count <= 5) { cols = 1; rows = count; }
-  else if (count === 6) { cols = 2; rows = 3; }
-  else if (count <= 8) { cols = 2; rows = 4; }
-  else                 { cols = 2; rows = 5; }
+  if (!Number.isInteger(count) || count < 1 || count > 12) {
+    throw new Error(`grid count must be between 1 and 12, got ${count}`);
+  }
+  if (count <= 2) {
+    cols = 1;
+    rows = count;
+  } else {
+    cols = 2;
+    rows = Math.ceil(count / 2);
+  }
 
   const cellWidth = Math.floor(CANVAS_WIDTH / cols);
   const cellHeight = Math.floor(CANVAS_HEIGHT / rows);
@@ -43,7 +47,9 @@ export function gridFor(count: number): GridSpec {
   for (let i = 0; i < count; i++) {
     const r = Math.floor(i / cols);
     const c = i % cols;
-    positions.push(`${c * cellWidth}_${r * cellHeight}`);
+    const isCenteredFinalSeat = cols === 2 && count % 2 === 1 && i === count - 1;
+    const x = isCenteredFinalSeat ? Math.floor((CANVAS_WIDTH - cellWidth) / 2) : c * cellWidth;
+    positions.push(`${x}_${r * cellHeight}`);
   }
   return {
     cols,

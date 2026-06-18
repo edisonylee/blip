@@ -88,10 +88,10 @@ struct CaptureView: View {
         switch session.state {
         case .idle:
             VStack(spacing: 8) {
-                Text("tap to capture")
+                Text(blip.isActive() ? "tap to capture" : "recording is closed")
                     .font(BlipTypography.title)
                     .foregroundStyle(.white)
-                Text("a 2-second blip for \(blip.name)")
+                Text(blip.isActive() ? "a 2-second blip for \(blip.name)" : scheduleText)
                     .font(BlipTypography.caption)
                     .foregroundStyle(.white.opacity(0.7))
             }
@@ -143,6 +143,7 @@ struct CaptureView: View {
     }
 
     private var disableRecord: Bool {
+        if !blip.isActive() { return true }
         switch session.state {
         case .recording, .denied, .unavailable, .error: return true
         default: return false
@@ -150,6 +151,7 @@ struct CaptureView: View {
     }
 
     private func onRecordTapped() async {
+        guard blip.isActive() else { return }
         switch session.state {
         case .idle:
             // First tap: request permissions, configure, start running, then record.
@@ -171,6 +173,10 @@ struct CaptureView: View {
         } catch {
             // Surface error in the overlay via state — the session already moved to .error or .ready.
         }
+    }
+
+    private var scheduleText: String {
+        "\(BlipHour.hourLabel(blip.activeStartHour)) to \(BlipHour.hourLabel(blip.activeEndHour)) in group time"
     }
 }
 

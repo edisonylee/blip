@@ -15,8 +15,8 @@
  * After running, open the iOS app (you'll be a member of the new blip), tap into
  * "export-verify", tap the film icon, run export. Inspect the resulting stitched.mp4.
  *
- *   hour A (current hour):   all 4 members posted   → expect 1×4 grid, no black cells
- *   hour B (current hour-1): only members 0 and 2   → expect 1×4 grid with black at seats 1,3
+ *   hour A (current hour):   all 4 members posted   → expect 2×2 grid, no black cells
+ *   hour B (current hour-1): only members 0 and 2   → expect 2×2 grid with black at seats 1,3
  */
 
 const admin = require("firebase-admin");
@@ -41,7 +41,7 @@ admin.initializeApp({
 const db = admin.firestore();
 const bucket = admin.storage().bucket();
 
-// Mirror functions/src/exportStitch.ts:todaysDateKey — same 4AM shift + tz.
+// Mirror the default schedule used for legacy groups: 4AM start in the group TZ.
 function todaysDateKey(tz) {
   const now = new Date(Date.now() - 4 * 60 * 60 * 1000);
   return new Intl.DateTimeFormat("en-CA", {
@@ -95,6 +95,8 @@ async function main() {
     size: 4,
     joinCode: "verify",
     timezoneIdentifier: TIMEZONE,
+    activeStartHour: 4,
+    activeEndHour: 4,
     createdAt: admin.firestore.Timestamp.fromDate(new Date()),
   });
   console.log("seed: blip doc written");
@@ -160,8 +162,8 @@ async function main() {
   console.log("\n=== seed complete ===");
   console.log(`blipId:  ${blipId}`);
   console.log(`dateKey: ${dateKey}`);
-  console.log(`hour A:  ${hourA} (4 posters — should render full 1×4)`);
-  console.log(`hour B:  ${hourB} (2 posters at seats 0,2 — should render 1×4 with black at seats 1,3)`);
+  console.log(`hour A:  ${hourA} (4 posters — should render full 2×2)`);
+  console.log(`hour B:  ${hourB} (2 posters at seats 0,2 — should render 2×2 with black at seats 1,3)`);
   console.log("\nNext:");
   console.log("  1. Open the iOS app — \"export-verify\" should appear in your list");
   console.log("  2. Tap into it → tap the film icon → run export");

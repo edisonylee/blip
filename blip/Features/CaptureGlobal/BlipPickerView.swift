@@ -72,12 +72,14 @@ struct BlipPickerView: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: Self.rowSpacing) {
                 ForEach(blips) { blip in
+                    let isActive = blip.isActive()
                     Button {
                         toggle(blip.id)
                     } label: {
                         BlipPickerRow(
                             blip: blip,
                             isSelected: selected.contains(blip.id),
+                            isActive: isActive,
                             avatarSize: Self.avatarSize
                         )
                         .padding(Self.rowPadding)
@@ -95,8 +97,9 @@ struct BlipPickerView: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .disabled(isSending)
-                    .accessibilityLabel("\(blip.name), \(blip.members.count) members")
+                    .disabled(isSending || !isActive)
+                    .opacity(isActive ? 1 : 0.55)
+                    .accessibilityLabel("\(blip.name), \(blip.members.count) members, \(isActive ? "open" : "closed")")
                     .accessibilityAddTraits(selected.contains(blip.id) ? .isSelected : [])
                 }
             }
@@ -158,6 +161,7 @@ struct BlipPickerView: View {
 private struct BlipPickerRow: View {
     let blip: Blip
     let isSelected: Bool
+    let isActive: Bool
     let avatarSize: CGFloat
 
     var body: some View {
@@ -186,6 +190,9 @@ private struct BlipPickerRow: View {
     }
 
     private var subtitle: String {
+        if !isActive {
+            return "opens at \(BlipHour.hourLabel(blip.activeStartHour)) group time"
+        }
         let count = blip.members.count
         return count == 1 ? "1 member" : "\(count) members"
     }

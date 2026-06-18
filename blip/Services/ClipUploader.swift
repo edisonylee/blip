@@ -23,27 +23,29 @@ final class ClipUploader: ObservableObject, ClipUploading {
     /// - Parameters:
     ///   - fileURL: local path to the recorded `.mov`
     ///   - uid: author's Firebase Auth uid
-    ///   - primaryBlipId: blip that "owns" the canonical Storage object
-    ///   - sharedToBlipIds: every blip to write a clip doc into (must include `primaryBlipId`)
+    ///   - primaryBlip: blip that owns the canonical Storage object
+    ///   - destinations: every blip receiving the clip, with its group schedule
     ///   - caption: optional caption
     func upload(
         fileURL: URL,
         uid: String,
-        primaryBlipId: String,
-        sharedToBlipIds: [String],
+        primaryBlip: Blip,
+        destinations: [Blip],
         caption: String?
     ) async throws {
-        precondition(sharedToBlipIds.contains(primaryBlipId), "sharedToBlipIds must include primaryBlipId")
+        precondition(destinations.contains(where: { $0.id == primaryBlip.id }), "destinations must include primaryBlip")
 
         isUploading = true
         progress = 0
         lastError = nil
         defer { isUploading = false }
 
-        let now = Date()
-        let dateKey = Self.dateKey(for: now)
-        let hour = Calendar.current.component(.hour, from: now)
-        let storagePath = "blips/\(primaryBlipId)/days/\(dateKey)/\(uid)/\(hour).mov"
+        let capturedAt = Self.creationDate(for: fileURL) ?? Date()
+        guard destinations.allSatisfy({ $0.isActive(at: capturedAt) }) else {
+            throw ClipUploadError.outsideActiveWindow
+        }
+        let primarySlot = Self.slot(for: primaryBlip, at: capturedAt)
+        let storagePath = "blips/\(primaryBlip.id)/days/\(primarySlot.dateKey)/\(uid)/\(primarySlot.hour).mov"
         let storageRef = storage.reference().child(storagePath)
 
         let metadata = StorageMetadata()
@@ -56,8 +58,8 @@ final class ClipUploader: ObservableObject, ClipUploading {
         async let thumbnailTask: String? = generateAndUploadThumbnail(
             fileURL: fileURL,
             uid: uid,
-            primaryBlipId: primaryBlipId,
-            hour: hour
+            primaryBlipId: primaryBlip.id,
+            hour: primarySlot.hour
         )
 
         let (videoUrlString, thumbnailUrlString) = try await (videoUrlTask, thumbnailTask)
@@ -68,17 +70,21 @@ final class ClipUploader: ObservableObject, ClipUploading {
         // 3. Write clip doc into each target blip's clips subcollection.
         // Deterministic clipId per (uid, hour) — repost within the hour replaces the prior doc.
         let batch = db.batch()
-        let clipId = "\(uid)_\(hour)"
-        for blipId in sharedToBlipIds {
-            let ref = db.collection("blips").document(blipId)
-                .collection("days").document(dateKey)
+        let sharedToBlipIds = destinations.map(\.id)
+        var clipIdByBlipId: [String: String] = [:]
+        for destination in destinations {
+            let slot = Self.slot(for: destination, at: capturedAt)
+            let clipId = "\(uid)_\(slot.hour)"
+            clipIdByBlipId[destination.id] = clipId
+            let ref = db.collection("blips").document(destination.id)
+                .collection("days").document(slot.dateKey)
                 .collection("clips").document(clipId)
             var payload: [String: Any] = [
                 "uid": uid,
-                "hour": hour,
+                "hour": slot.hour,
                 "videoUrl": videoUrlString,
                 "caption": caption as Any,
-                "createdAt": Timestamp(date: now),
+                "createdAt": Timestamp(date: capturedAt),
                 "sharedToBlipIds": sharedToBlipIds,
                 "durationSeconds": durationSeconds,
                 "reportCount": 0,
@@ -90,37 +96,21 @@ final class ClipUploader: ObservableObject, ClipUploading {
         try await batch.commit()
 
         // 4. Post a clip card message to each blip's group chat.
-        let blipNames = await fetchBlipNames(ids: sharedToBlipIds)
         let senderName = await fetchSenderName(uid: uid)
-        for blipId in sharedToBlipIds {
+        for destination in destinations {
             MessagesRepository.postClipMessage(
-                blipId: blipId,
-                blipName: blipNames[blipId],
+                blipId: destination.id,
+                blipName: destination.name,
                 senderName: senderName,
                 uid: uid,
                 thumbnailUrl: thumbnailUrlString,
                 videoUrl: videoUrlString,
                 caption: caption,
-                clipId: clipId
+                clipId: clipIdByBlipId[destination.id] ?? "\(uid)_\(primarySlot.hour)"
             )
         }
 
         log.info("uploaded clip path=\(storagePath, privacy: .public) blips=\(sharedToBlipIds.count, privacy: .public)")
-    }
-
-    private func fetchBlipNames(ids: [String]) async -> [String: String] {
-        var names: [String: String] = [:]
-        for id in ids {
-            do {
-                let snap = try await db.collection("blips").document(id).getDocument()
-                if let name = snap.data()?["name"] as? String {
-                    names[id] = name
-                }
-            } catch {
-                log.error("failed to fetch blip name id=\(id, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
-            }
-        }
-        return names
     }
 
     private func fetchSenderName(uid: String) async -> String {
@@ -215,11 +205,17 @@ final class ClipUploader: ObservableObject, ClipUploading {
 
     // MARK: - Shared helpers
 
-    static func dateKey(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone.current
-        return formatter.string(from: date)
+    private static func slot(for blip: Blip, at date: Date) -> (dateKey: String, hour: Int) {
+        let timezone = TimeZone(identifier: blip.timezoneIdentifier) ?? .current
+        return (
+            BlipHour.dateKey(for: date, in: timezone, startHour: blip.activeStartHour),
+            BlipHour.hour(for: date, in: timezone)
+        )
+    }
+
+    private static func creationDate(for fileURL: URL) -> Date? {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
+        return attributes?[.creationDate] as? Date
     }
 
     private static func probeDuration(fileURL: URL) async -> Double {
@@ -230,5 +226,13 @@ final class ClipUploader: ObservableObject, ClipUploading {
         } catch {
             return CaptureSession.clipDuration
         }
+    }
+}
+
+enum ClipUploadError: LocalizedError {
+    case outsideActiveWindow
+
+    var errorDescription: String? {
+        "this blip is outside its daily recording window."
     }
 }

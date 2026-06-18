@@ -7,8 +7,7 @@ private let log = Logger(subsystem: "app.blip.ios", category: "ClipsRepository")
 /// Per-blip listener for today's clips. Backs both the BlipDetail hour-slot grid
 /// and the HomeView BlipCard live progress.
 ///
-/// The "day" is the blip's local 4AM-to-4AM window, so the dateKey we listen to
-/// is computed in the blip's timezone (per CLAUDE.md day-boundary decision).
+/// The "day" uses the blip's shared timezone and configured start hour.
 @MainActor
 final class ClipsRepository: ObservableObject {
     @Published private(set) var clips: [Clip] = []
@@ -23,6 +22,8 @@ final class ClipsRepository: ObservableObject {
     private let db = Firestore.firestore()
     private var listener: ListenerRegistration?
     private(set) var blipId: String?
+    private var blipTimezone: TimeZone = .current
+    private var activeStartHour = 4
 
     deinit {
         listener?.remove()
@@ -32,7 +33,9 @@ final class ClipsRepository: ObservableObject {
         listener?.remove()
         blipId = blip.id
         let tz = TimeZone(identifier: blip.timezoneIdentifier) ?? .current
-        let dateKey = BlipHour.dateKey(for: Date(), in: tz)
+        blipTimezone = tz
+        activeStartHour = blip.activeStartHour
+        let dateKey = BlipHour.dateKey(for: Date(), in: tz, startHour: activeStartHour)
         log.info("startListening blip=\(blip.id, privacy: .public) date=\(dateKey, privacy: .public)")
 
         listener = db.collection("blips").document(blip.id)
@@ -47,10 +50,10 @@ final class ClipsRepository: ObservableObject {
                         return
                     }
                     let docs = snap?.documents ?? []
-                    let decoded = docs.compactMap { Self.decode(doc: $0) }
+                    let decoded = docs.compactMap { Self.decode(doc: $0) }.filter { !$0.hidden }
                     self.clips = decoded.sorted { $0.createdAt > $1.createdAt }
                     self.clipsByHour = Dictionary(grouping: decoded, by: { $0.hour })
-                    let nowHour = Calendar.current.component(.hour, from: Date())
+                    let nowHour = BlipHour.currentHour(in: tz)
                     self.postersThisHour = Set((self.clipsByHour[nowHour] ?? []).map { $0.uid })
                 }
             }
@@ -69,8 +72,7 @@ final class ClipsRepository: ObservableObject {
 
     func deleteClip(_ clip: BlipClip) async throws {
         guard let blipId else { return }
-        let tz = TimeZone.current
-        let dateKey = BlipHour.dateKey(for: clip.createdAt, in: tz)
+        let dateKey = BlipHour.dateKey(for: clip.createdAt, in: blipTimezone, startHour: activeStartHour)
         try await db.collection("blips").document(blipId)
             .collection("days").document(dateKey)
             .collection("clips").document(clip.id)
@@ -79,8 +81,7 @@ final class ClipsRepository: ObservableObject {
 
     func updateCaption(_ clip: BlipClip, caption: String) async throws {
         guard let blipId else { return }
-        let tz = TimeZone.current
-        let dateKey = BlipHour.dateKey(for: clip.createdAt, in: tz)
+        let dateKey = BlipHour.dateKey(for: clip.createdAt, in: blipTimezone, startHour: activeStartHour)
         try await db.collection("blips").document(blipId)
             .collection("days").document(dateKey)
             .collection("clips").document(clip.id)

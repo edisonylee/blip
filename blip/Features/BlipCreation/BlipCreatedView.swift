@@ -23,6 +23,20 @@ struct BlipCreatedView: View {
                     .textSelection(.enabled)
                     .padding(.top, 4)
 
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("daily window")
+                        .font(.blip(size: 11, weight: .semibold))
+                        .foregroundStyle(BlipColor.textTertiary)
+                        .textCase(.uppercase)
+                        .tracking(0.8)
+                    Text(scheduleText)
+                        .font(BlipTypography.body)
+                        .foregroundStyle(BlipColor.textSecondary)
+                    Text(blip.timezoneIdentifier.replacingOccurrences(of: "_", with: " "))
+                        .font(BlipTypography.caption)
+                        .foregroundStyle(BlipColor.textTertiary)
+                }
+
                 Button { showShareSheet = true } label: {
                     HStack(spacing: 6) {
                         Text("invite a friend").underline()
@@ -66,6 +80,13 @@ struct BlipCreatedView: View {
         InviteShare.text(blipName: blip.name, joinCode: blip.joinCode, referrerUid: currentUid)
     }
 
+    private var scheduleText: String {
+        if blip.activeStartHour == blip.activeEndHour {
+            return "24 hours, starting at \(BlipHour.hourLabel(blip.activeStartHour))"
+        }
+        return "\(BlipHour.hourLabel(blip.activeStartHour)) to \(BlipHour.hourLabel(blip.activeEndHour))"
+    }
+
     private var currentUid: String? {
         if case .signedIn(let uid) = auth.state { return uid }
         return nil
@@ -84,6 +105,8 @@ struct BlipCreatedView: View {
                 joinCode: "c9kz6il",
                 inviteUrl: nil,
                 timezoneIdentifier: "America/New_York",
+                activeStartHour: 8,
+                activeEndHour: 22,
                 createdAt: Date()
             ),
             onDone: {}

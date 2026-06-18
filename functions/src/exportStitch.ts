@@ -9,18 +9,24 @@ import * as path from "node:path";
 import ffmpegStatic from "ffmpeg-static";
 
 import { gridFor, CANVAS } from "./utils/gridLayout";
+import {
+  dateKeyFor,
+  isActiveHour,
+  orderedHours,
+  scheduleFrom,
+} from "./utils/blipSchedule";
 
 /**
  * Callable: exportStitch({ blipId })
  *
  * Per CLAUDE.md core mechanic:
- *   - Export is on-demand, current day only (4AM-to-4AM in the blip's timezone).
+ *   - Export is on-demand for the current group day and configured daily window.
  *   - Hours where no member contributed are dropped.
- *   - Per-hour grid layout: 1×1, 1×2, 2×2 (3–4), 3×2 (5–6), 3×3 (7–9), 4×3 (10+).
+ *   - Per-hour grid layout: 1×1, vertical 1×2, then two seats per row up to 12.
  *
  * Pipeline:
  *   1. Auth + member check.
- *   2. Compute today's dateKey in the blip's TZ (4AM shift).
+ *   2. Compute today's dateKey from the blip's shared timezone and start hour.
  *   3. Read clips from Firestore, group by hour, drop empty hours.
  *   4. Download every clip from Storage to /tmp.
  *   5. For each non-empty hour: ffmpeg `xstack` with pre-scaled inputs to a
@@ -63,8 +69,15 @@ export const exportStitch = onCall(
     if (!members.includes(uid)) {
       throw new HttpsError("permission-denied", "not a member");
     }
-    const tz: string = blip.timezoneIdentifier ?? "UTC";
-    const dateKey = todaysDateKey(tz);
+    if (members.length === 0 || members.length > 12) {
+      throw new HttpsError("failed-precondition", "blip must have 1 to 12 members");
+    }
+    const schedule = scheduleFrom(blip);
+    const dateKey = dateKeyFor(
+      new Date(),
+      schedule.timezoneIdentifier,
+      schedule.activeStartHour,
+    );
 
     logger.info("exportStitch start", { blipId, uid, dateKey });
 
@@ -89,6 +102,9 @@ export const exportStitch = onCall(
     for (const doc of clipsSnap.docs) {
       const d = doc.data();
       const hour = d.hour as number;
+      if (!isActiveHour(hour, schedule.activeStartHour, schedule.activeEndHour)) {
+        continue;
+      }
       const meta: ClipMeta = {
         clipId: doc.id,
         uid: d.uid as string,
@@ -99,7 +115,14 @@ export const exportStitch = onCall(
       arr.push(meta);
       byHour.set(hour, arr);
     }
-    const sortedHours = [...byHour.keys()].sort((a, b) => a - b);
+    if (byHour.size === 0) {
+      throw new HttpsError("failed-precondition", "no clips in this blip window yet");
+    }
+    const availableHours = new Set(byHour.keys());
+    const sortedHours = orderedHours(
+      schedule.activeStartHour,
+      schedule.activeEndHour,
+    ).filter((hour) => availableHours.has(hour));
 
     const workdir = await fs.mkdtemp(path.join(os.tmpdir(), `stitch-${blipId}-`));
     try {
@@ -161,11 +184,19 @@ export const exportStitch = onCall(
         `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/` +
         `${encodeURIComponent(remotePath)}?alt=media&token=${downloadToken}`;
 
-      // Per-user exports don't fit the day-doc shared-stitch fields
-      // (stitchStatus / stitchedVideoUrl / stitchedAt assumed one stitch per
-      // day). Skipping the day-doc write — clients hold the URL in memory and
-      // re-stitch on revisit. Persisting per-user URLs is a follow-up if usage
-      // shows people want a "last stitched" thumbnail in Archive.
+      // Persist each member's latest export independently so Archive can list it
+      // without making one member's future curation overwrite another's.
+      const dayRef = db.collection("blips").doc(blipId).collection("days").doc(dateKey);
+      await dayRef.set({ dateKey }, { merge: true });
+      await dayRef.update(
+        new admin.firestore.FieldPath("exportsByUid", uid),
+        {
+          stitchStatus: "ready",
+          stitchedVideoUrl: stitchedUrl,
+          stitchedAt: admin.firestore.FieldValue.serverTimestamp(),
+          hours: sortedHours.length,
+        },
+      );
 
       logger.info("exportStitch done", {
         blipId,
@@ -182,17 +213,6 @@ export const exportStitch = onCall(
 );
 
 // MARK: - Helpers
-
-function todaysDateKey(tz: string): string {
-  const now = new Date(Date.now() - 4 * 60 * 60 * 1000);
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  return fmt.format(now); // en-CA gives YYYY-MM-DD
-}
 
 // Parse the storage object path out of a Firebase Storage download URL.
 // Expected shape: https://firebasestorage.googleapis.com/v0/b/<bucket>/o/<encoded-path>?alt=media&token=...

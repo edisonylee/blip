@@ -80,7 +80,7 @@ struct ReviewView: View {
     private var clipPreview: some View {
         VideoPreview(url: fileURL)
             .overlay {
-                ClipTimestampLabel.now()
+                ClipTimestampLabel(hour: BlipHour.currentHour(in: blip.timezoneIdentifier))
             }
     }
 
@@ -107,6 +107,8 @@ struct ReviewView: View {
                     .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .disabled(!dest.isActive)
+                .opacity(dest.isActive ? 1 : 0.55)
             }
         }
     }
@@ -115,12 +117,21 @@ struct ReviewView: View {
         let id: String
         let name: String
         let subtitle: String
+        let isActive: Bool
     }
 
     private var allDestinations: [Destination] {
-        var list = [Destination(id: blip.id, name: blip.name, subtitle: "this blip")]
+        var list = [Destination(
+            id: blip.id,
+            name: blip.name,
+            subtitle: "this blip",
+            isActive: blip.isActive()
+        )]
         for other in repo.blips where other.id != blip.id {
-            list.append(Destination(id: other.id, name: other.name, subtitle: "\(other.members.count) members"))
+            let subtitle = other.isActive()
+                ? "\(other.members.count) members"
+                : "opens at \(BlipHour.hourLabel(other.activeStartHour)) group time"
+            list.append(Destination(id: other.id, name: other.name, subtitle: subtitle, isActive: other.isActive()))
         }
         return list
     }
@@ -128,7 +139,7 @@ struct ReviewView: View {
     private func post() {
         guard case .signedIn(let uid) = auth.state else { return }
         Task {
-            await vm.post(uid: uid, fileURL: fileURL)
+            await vm.post(uid: uid, fileURL: fileURL, availableBlips: repo.blips)
             if vm.errorMessage == nil { onPosted() }
         }
     }

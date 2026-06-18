@@ -55,11 +55,11 @@ final class CaptureGlobalViewModel: ObservableObject {
         errorMessage = nil
     }
 
-    /// Fan-out send. Picks the first selected blipId as `primaryBlipId` (Storage
+    /// Fan-out send. Picks the first selected blip as the Storage
     /// owner) and writes one clip doc into every selected blip. Mirrors the
     /// per-blip ReviewViewModel.post path so deterministic clipIds (`{uid}_{hour}`)
     /// dedupe re-posts within the same local hour.
-    func send(uid: String) async -> Bool {
+    func send(uid: String, blips: [Blip]) async -> Bool {
         guard let url = recordingURL else { return false }
         guard !selectedBlipIds.isEmpty else { return false }
 
@@ -67,15 +67,19 @@ final class CaptureGlobalViewModel: ObservableObject {
         isSending = true
         defer { isSending = false }
 
-        let ids = Array(selectedBlipIds)
-        guard let primary = ids.first else { return false }
+        let destinations = blips.filter { selectedBlipIds.contains($0.id) }
+        guard destinations.count == selectedBlipIds.count,
+              let primary = destinations.first else {
+            errorMessage = "one of those blips is no longer available."
+            return false
+        }
 
         do {
             try await uploader.upload(
                 fileURL: url,
                 uid: uid,
-                primaryBlipId: primary,
-                sharedToBlipIds: ids,
+                primaryBlip: primary,
+                destinations: destinations,
                 caption: nil
             )
             try? FileManager.default.removeItem(at: url)

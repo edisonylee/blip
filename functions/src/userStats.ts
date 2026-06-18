@@ -29,8 +29,8 @@ function yesterdayKeyInTimezone(today: Date, timeZone: string): string {
  *   - lastClipDay:   today's YYYY-MM-DD in the user's TZ
  *
  * The "day" here is the user's calendar day in their own TZ — midnight to
- * midnight. This is intentionally separate from the blipchat's 4 AM stitch
- * boundary; users think about streaks in normal calendar terms.
+ * midnight. This is intentionally separate from each blip's configured stitch
+ * window; users think about streaks in normal calendar terms.
  */
 export const onClipCreatedUpdateStats = onDocumentCreated(
   {
