@@ -66,7 +66,7 @@ struct HomeView: View {
                     .buttonStyle(_ScalePress())
                     .accessibilityLabel("open camera")
                     // 36 pt from safe-area bottom → camera centre at bar top edge
-                    .padding(.bottom, 36)
+                    .padding(.bottom, 24)
                 }
 
                 // Plus FAB — bottom-right corner, above bar
@@ -77,7 +77,7 @@ struct HomeView: View {
                         if activeTab == .blips || activeTab == .requests {
                             plusFAB
                                 .padding(.trailing, 20)
-                                .padding(.bottom, 76)
+                                .padding(.bottom, 64)
                                 .transition(.scale(scale: 0.75).combined(with: .opacity))
                         }
                     }
@@ -108,7 +108,7 @@ struct HomeView: View {
                                 onLockedTap: { showPlusMenu = false; showReferralShare = true }
                             )
                             .padding(.trailing, 20)
-                            .padding(.bottom, 158)
+                            .padding(.bottom, 146)
                         }
                     }
                     .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .bottomTrailing)))
@@ -377,7 +377,7 @@ private struct SmoothBottomBar: View {
             navTab(.profile,  "person",             "me")
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 64)
+        .frame(height: 52)
     }
 
     // MARK: Nav tab (icon always visible, label reveals on active)
@@ -419,14 +419,14 @@ private struct SmoothBottomBar: View {
                         ))
                 }
             }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 7)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
             .background {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(on ? BlipColor.navPill : .clear)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 64)
+            .frame(height: 52)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
