@@ -8,6 +8,9 @@ struct HomeView: View {
 
     @StateObject private var vm = HomeViewModel()
     @StateObject private var clipUploader = ClipUploader()
+    // Lifted here so the bar badge count and RequestsView share one listener.
+    @StateObject private var requestsVM = RequestsViewModel()
+
     @State private var showPlusMenu = false
     @State private var creationDestination: CreationDestination?
     @State private var path = NavigationPath()
@@ -16,38 +19,41 @@ struct HomeView: View {
     @State private var showReferralShare = false
     @State private var activeTab: Tab = .blips
 
-    enum Tab { case camera, blips, profile }
+    enum Tab { case blips, camera, requests, profile }
 
     var body: some View {
         NavigationStack(path: $path) {
             ZStack {
-                // Pastel gradient fills the entire root canvas.
                 BlipColor.backgroundGradient.ignoresSafeArea()
 
-                // ── Main layout ──────────────────────────────────────────
+                // ── Main layout ───────────────────────────────────────────
                 VStack(spacing: 0) {
                     TabView(selection: $activeTab) {
                         blipsPage.tag(Tab.blips)
+                        RequestsView(vm: requestsVM).tag(Tab.requests)
                         ProfileView().tag(Tab.profile)
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
 
-                    // Full-width smooth bar (no FAB inside)
                     smoothBar
                 }
 
-                // ── Plus FAB — floats ABOVE the bar, centered ────────────
+                // ── Plus FAB — bottom-RIGHT corner, above the bar ─────────
                 VStack(spacing: 0) {
                     Spacer()
-                    if activeTab == .blips {
-                        plusFAB
-                            .padding(.bottom, 76) // sits ~12pt above the 64pt bar
-                            .transition(.scale(scale: 0.75).combined(with: .opacity))
+                    HStack(spacing: 0) {
+                        Spacer()
+                        if activeTab == .blips || activeTab == .requests {
+                            plusFAB
+                                .padding(.trailing, 20)
+                                .padding(.bottom, 76)
+                                .transition(.scale(scale: 0.75).combined(with: .opacity))
+                        }
                     }
                 }
                 .animation(.spring(response: 0.3, dampingFraction: 0.75), value: activeTab)
 
-                // ── Plus popover ─────────────────────────────────────────
+                // ── Plus popover — right-aligned, above the FAB ───────────
                 if showPlusMenu {
                     Color.black.opacity(0.001)
                         .ignoresSafeArea()
@@ -56,25 +62,28 @@ struct HomeView: View {
                                 showPlusMenu = false
                             }
                         }
+
                     VStack(spacing: 0) {
                         Spacer()
-                        PlusPopover(
-                            onCreate: { showPlusMenu = false; creationDestination = .create },
-                            onJoin:   { showPlusMenu = false; creationDestination = .join },
-                            onDismiss: {
-                                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                                    showPlusMenu = false
-                                }
-                            },
-                            canCreate: canCreateBlip,
-                            referralsToNextSlot: users.profile?.referralsToNextSlot ?? 4,
-                            onLockedTap: { showPlusMenu = false; showReferralShare = true }
-                        )
-                        .padding(.horizontal, 20)
-                        // 158 pt keeps the popover clearly above the FAB (top at ≈128 pt)
-                        .padding(.bottom, 158)
+                        HStack(spacing: 0) {
+                            Spacer()
+                            PlusPopover(
+                                onCreate: { showPlusMenu = false; creationDestination = .create },
+                                onJoin:   { showPlusMenu = false; creationDestination = .join },
+                                onDismiss: {
+                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                        showPlusMenu = false
+                                    }
+                                },
+                                canCreate: canCreateBlip,
+                                referralsToNextSlot: users.profile?.referralsToNextSlot ?? 4,
+                                onLockedTap: { showPlusMenu = false; showReferralShare = true }
+                            )
+                            .padding(.trailing, 20)
+                            .padding(.bottom, 158)
+                        }
                     }
-                    .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .bottom)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .bottomTrailing)))
                     .animation(.spring(response: 0.28, dampingFraction: 0.82), value: showPlusMenu)
                 }
 
@@ -112,10 +121,17 @@ struct HomeView: View {
             }
         }
         .onChange(of: deepLinks.pending) { _, action in handle(action) }
-        .onAppear { handle(deepLinks.pending) }
+        .onAppear {
+            handle(deepLinks.pending)
+            // Start the requests listener as soon as we know the uid.
+            if let uid = currentUid { requestsVM.startListening(uid: uid) }
+        }
+        .onChange(of: currentUid) { _, uid in
+            if let uid { requestsVM.startListening(uid: uid) }
+        }
     }
 
-    // MARK: - Plus FAB (outside the bar)
+    // MARK: - Plus FAB (bottom-right)
 
     private var plusFAB: some View {
         Button {
@@ -127,7 +143,7 @@ struct HomeView: View {
                 Circle()
                     .fill(BlipColor.accentNeutral)
                     .frame(width: 52, height: 52)
-                    .shadow(color: .black.opacity(0.28), radius: 16, x: 0, y: 6)
+                    .shadow(color: BlipColor.accentNeutral.opacity(0.45), radius: 16, x: 0, y: 6)
                 Image(systemName: "plus")
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(BlipColor.accentNeutralOn)
@@ -137,15 +153,18 @@ struct HomeView: View {
         .accessibilityLabel("create or join a blip")
     }
 
-    // MARK: - Smooth bar container (separator + SmoothBottomBar)
+    // MARK: - Smooth bar container
 
     private var smoothBar: some View {
         VStack(spacing: 0) {
-            // Feather the gradient into the dark nav tray
             Rectangle()
                 .fill(BlipColor.navBackground.opacity(0.18))
                 .frame(height: 0.5)
-            SmoothBottomBar(active: $activeTab, onCamera: handleCameraTab)
+            SmoothBottomBar(
+                active: $activeTab,
+                onCamera: handleCameraTab,
+                requestBadge: requestsVM.pendingCount
+            )
         }
         .background {
             BlipColor.navBackground.ignoresSafeArea(edges: .bottom)
@@ -250,7 +269,7 @@ struct HomeView: View {
             HStack {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text("uid \(currentUid.prefix(6))")
+                    Text("uid \(currentUid?.prefix(6) ?? "—")")
                     Text("blips \(repo.blips.count)")
                     if let err = repo.lastError {
                         Text(err).foregroundStyle(BlipColor.error).lineLimit(2)
@@ -279,30 +298,29 @@ struct HomeView: View {
                 path = NavigationPath([blip])
             }
         case .invite(let referrerUid):
-            if case .signedIn(let me) = auth.state, me != referrerUid {
+            if let me = currentUid, me != referrerUid {
                 Task { try? await users.claimReferral(referrerUid) }
             }
         }
         deepLinks.consume()
     }
 
-    private var currentUid: String { vm.currentUid(from: auth.state) }
+    private var currentUid: String? {
+        if case .signedIn(let uid) = auth.state { return uid }
+        return nil
+    }
 
     // MARK: - Referral gate
 
     private var canCreateBlip: Bool {
-        guard case .signedIn(let me) = auth.state else { return false }
+        guard let me = currentUid else { return false }
         let unlocked = users.profile?.unlockedBlipSlots ?? 1
         let createdCount = repo.blips.filter { $0.ownerUid == me }.count
         return createdCount < unlocked
     }
 
     private var referralShareText: String {
-        let uid: String? = {
-            if case .signedIn(let id) = auth.state { return id }
-            return nil
-        }()
-        if let url = InviteShare.inviteURL(referrerUid: uid) {
+        if let url = InviteShare.inviteURL(referrerUid: currentUid) {
             return "on blip with me — \(url.absoluteString)"
         }
         return "on blip with me"
@@ -316,70 +334,71 @@ private enum CreationDestination: String, Identifiable {
 
 // MARK: - Smooth Bottom Bar ──────────────────────────────────────────────────
 //
-// Replicates the Android SmoothBottomBar sliding-indicator concept in SwiftUI:
-// a spring-animated capsule glides along the bar to the active tab, while
-// icon + label crossfade between filled/bold (active) and ghost/medium (inactive).
+// 4 equal columns: [blips] [camera] [requests] [me]
+// The sliding capsule glides between the three navigable tabs (blips/requests/profile).
+// Camera is always a distinct accent circle — excluded from the pill indicator.
 //
-// Layout: three equal columns — [blips] [camera] [me].
-// The sliding capsule only shows for blips/profile (camera is a white circle).
+// Pill offset maths (ZStack centre = geo.size.width / 2 = 2·colW):
+//   blips    col-0 centre = 0.5·colW  →  offset = −1.5·colW
+//   camera   col-1 centre = 1.5·colW  →  (no pill)
+//   requests col-2 centre = 2.5·colW  →  offset = +0.5·colW
+//   profile  col-3 centre = 3.5·colW  →  offset = +1.5·colW
 
 private struct SmoothBottomBar: View {
     @Binding var active: HomeView.Tab
     let onCamera: () -> Void
+    /// Number to display as a badge dot on the requests tab. 0 = hidden.
+    let requestBadge: Int
 
     var body: some View {
         GeometryReader { geo in
-            let colW = geo.size.width / 3
+            let colW = geo.size.width / 4
 
             ZStack(alignment: .center) {
-                // ── Sliding pill indicator ───────────────────────────────
-                // Moves between column centers via .offset; spring gives the
-                // "smooth glide" that defines this bar style.
+                // Sliding pill
                 if active != .camera {
                     Capsule()
                         .fill(BlipColor.accent.opacity(0.22))
-                        .frame(width: colW * 0.72, height: 42)
+                        .frame(width: colW * 0.76, height: 42)
                         .offset(x: pillOffset(colW: colW))
-                        .animation(
-                            .spring(response: 0.38, dampingFraction: 0.72),
-                            value: active
-                        )
+                        .animation(.spring(response: 0.38, dampingFraction: 0.72), value: active)
                 }
 
-                // ── Icon + label row ─────────────────────────────────────
+                // Tab row
                 HStack(spacing: 0) {
-                    navTab(
-                        tab: .blips,
-                        activeIcon: "play.square.stack.fill",
-                        inactiveIcon: "play.square.stack",
-                        label: "blips",
-                        colW: colW
-                    )
+                    navTab(tab: .blips,
+                           activeIcon: "play.square.stack.fill",
+                           inactiveIcon: "play.square.stack",
+                           label: "blips",
+                           colW: colW)
+
                     cameraTab(colW: colW)
-                    navTab(
-                        tab: .profile,
-                        activeIcon: "person.fill",
-                        inactiveIcon: "person",
-                        label: "me",
-                        colW: colW
-                    )
+
+                    requestsTab(colW: colW)
+
+                    navTab(tab: .profile,
+                           activeIcon: "person.fill",
+                           inactiveIcon: "person",
+                           label: "me",
+                           colW: colW)
                 }
             }
         }
         .frame(height: 64)
     }
 
-    // Column-center offset from the ZStack mid-point.
-    // Column 0 → −colW, Column 1 → 0, Column 2 → +colW
+    // MARK: Pill offset
+
     private func pillOffset(colW: CGFloat) -> CGFloat {
         switch active {
-        case .blips:   return -colW
-        case .camera:  return 0
-        case .profile: return  colW
+        case .blips:    return -1.5 * colW
+        case .camera:   return -0.5 * colW  // unused (pill hidden for camera)
+        case .requests: return  0.5 * colW
+        case .profile:  return  1.5 * colW
         }
     }
 
-    // MARK: Nav tab item
+    // MARK: Generic nav tab
 
     private func navTab(
         tab: HomeView.Tab,
@@ -394,7 +413,7 @@ private struct SmoothBottomBar: View {
         } label: {
             VStack(spacing: 5) {
                 Image(systemName: on ? activeIcon : inactiveIcon)
-                    .font(.system(size: 21, weight: on ? .bold : .medium))
+                    .font(.system(size: 20, weight: on ? .bold : .medium))
                     .foregroundStyle(on ? BlipColor.navForeground : BlipColor.navForegroundInactive)
                     .scaleEffect(on ? 1.06 : 1.0)
                     .animation(.spring(response: 0.25, dampingFraction: 0.6), value: on)
@@ -409,7 +428,7 @@ private struct SmoothBottomBar: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: Camera tab (accent circle — pops against the dark tray)
+    // MARK: Camera tab (accent circle)
 
     private func cameraTab(colW: CGFloat) -> some View {
         Button(action: onCamera) {
@@ -417,10 +436,10 @@ private struct SmoothBottomBar: View {
                 ZStack {
                     Circle()
                         .fill(BlipColor.accentNeutral)
-                        .frame(width: 44, height: 44)
+                        .frame(width: 42, height: 42)
                         .shadow(color: BlipColor.accentNeutral.opacity(0.4), radius: 8, x: 0, y: 2)
                     Image(systemName: "camera.fill")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(BlipColor.accentNeutralOn)
                 }
                 Text("camera")
@@ -432,9 +451,56 @@ private struct SmoothBottomBar: View {
         .buttonStyle(_ScalePress())
         .accessibilityLabel("open camera")
     }
+
+    // MARK: Requests tab (with live badge dot)
+
+    private func requestsTab(colW: CGFloat) -> some View {
+        let on = active == .requests
+        return Button {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) { active = .requests }
+        } label: {
+            VStack(spacing: 5) {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: on ? "bell.badge.fill" : "bell.fill")
+                        .font(.system(size: 20, weight: on ? .bold : .medium))
+                        .foregroundStyle(on ? BlipColor.navForeground : BlipColor.navForegroundInactive)
+                        .scaleEffect(on ? 1.06 : 1.0)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.6), value: on)
+
+                    // Badge dot — shown only when there are pending requests
+                    if requestBadge > 0 {
+                        ZStack {
+                            Circle()
+                                .fill(BlipColor.error)
+                                .frame(width: 16, height: 16)
+                            if requestBadge < 10 {
+                                Text("\(requestBadge)")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.white)
+                            } else {
+                                Text("9+")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        .offset(x: 8, y: -6)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .frame(height: 22) // match other icons' visual height
+
+                Text("requests")
+                    .font(.blip(size: 10, weight: on ? .bold : .medium))
+                    .foregroundStyle(on ? BlipColor.navForeground : BlipColor.navForegroundInactive)
+            }
+            .frame(width: colW)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 }
 
-// MARK: - Shared press style
+// MARK: - Press style
 
 private struct _ScalePress: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
