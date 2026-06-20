@@ -423,7 +423,7 @@ private struct SmoothBottomBar: View {
             .padding(.vertical, 7)
             .background {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(on ? BlipColor.accent.opacity(0.22) : .clear)
+                    .fill(on ? BlipColor.navPill : .clear)
             }
             .frame(maxWidth: .infinity)
             .frame(height: 64)

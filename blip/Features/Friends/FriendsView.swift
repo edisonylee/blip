@@ -246,7 +246,7 @@ private struct FriendsContent: View {
                 .font(.system(size: 40, weight: .light))
                 .foregroundStyle(BlipColor.textTertiary)
                 .padding(.top, 48)
-            Text(searchText.isEmpty ? "no users yet" : "no results for "\(searchText)"")
+            Text(searchText.isEmpty ? "no users yet" : "no results for \"\(searchText)\"")
                 .font(BlipTypography.body)
                 .foregroundStyle(BlipColor.textPrimary)
             if !searchText.isEmpty {
