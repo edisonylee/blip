@@ -304,6 +304,25 @@ final class MessagesRepository: ObservableObject {
         try await ref.setValue(payload)
     }
 
+    // MARK: - Post audio message
+
+    static func postAudioMessage(
+        blipId: String, blipName: String?, senderName: String?,
+        uid: String, audioUrl: String, duration: Double, waveform: [Float]
+    ) async throws {
+        let ref = Database.database().reference()
+            .child("chats").child(blipId).child("messages").childByAutoId()
+        var payload: [String: Any] = [
+            "uid": uid, "blipId": blipId, "type": "audio",
+            "audioUrl": audioUrl, "audioDuration": duration,
+            "waveform": waveform.map { Double($0) },
+            "ts": ServerValue.timestamp(),
+        ]
+        if let blipName   { payload["blipName"]    = blipName   }
+        if let senderName { payload["senderName"]  = senderName }
+        try await ref.setValue(payload)
+    }
+
     // MARK: - Delete
 
     /// Hides this message only for the current user (local tombstone in RTDB).
