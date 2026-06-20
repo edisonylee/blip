@@ -36,8 +36,37 @@ struct HomeView: View {
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
 
-                    // Raised-camera bottom bar
+                    // 4-tab bar (NO camera inside — camera floats above as overlay)
                     smoothBar
+                }
+
+                // Camera bubble — half above bar, half inside.
+                // Bar height = 64 pt.  Camera radius = 28 pt.
+                // We want the camera CENTRE at the bar top edge, so
+                //   camera bottom = 64 − 28 = 36 pt above safe-area bottom.
+                VStack(spacing: 0) {
+                    Spacer()
+                    Button(action: handleCameraTab) {
+                        ZStack {
+                            // Thin ring acts as a visual separator between the
+                            // content area above and the dark bar below.
+                            Circle()
+                                .stroke(BlipColor.backgroundGradient, lineWidth: 3)
+                                .frame(width: 62, height: 62)
+                            Circle()
+                                .fill(BlipColor.accentNeutral)
+                                .frame(width: 56, height: 56)
+                                .shadow(color: BlipColor.accentNeutral.opacity(0.45),
+                                        radius: 14, x: 0, y: -5)
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundStyle(BlipColor.accentNeutralOn)
+                        }
+                    }
+                    .buttonStyle(_ScalePress())
+                    .accessibilityLabel("open camera")
+                    // 36 pt from safe-area bottom → camera centre at bar top edge
+                    .padding(.bottom, 36)
                 }
 
                 // Plus FAB — bottom-right corner, above bar
@@ -162,7 +191,6 @@ struct HomeView: View {
                 .frame(height: 0.5)
             SmoothBottomBar(
                 active: $activeTab,
-                onCamera: handleCameraTab,
                 requestBadge: requestsVM.pendingCount
             )
         }
@@ -326,69 +354,33 @@ private enum CreationDestination: String, Identifiable {
 
 // MARK: - Smooth Bottom Bar ─────────────────────────────────────────────────
 //
-// Layout: [ blips ] [ requests ] [ ●CAMERA● ] [ friends ] [ me ]
-//                                      ↑
-//                          Circle is half above the bar,
-//                          centred by ZStack alignment.
-//
-// The tab row has a transparent gap in the centre for the camera circle.
-// Each tab shows icon-only when inactive; label slides in to the right
-// when active (RoundedRectangle pill, cornerRadius 14).
+// 4 equal tabs: [blips] [requests] [gap] [friends] [me]
+// The transparent centre gap (68 pt) reserves visual space for the camera
+// bubble that floats ABOVE the bar as a separate ZStack overlay in HomeView.
+// Each tab shows its icon always; the active tab's label slides in to the
+// right inside a RoundedRectangle pill (cornerRadius 14).
 
 private struct SmoothBottomBar: View {
     @Binding var active: HomeView.Tab
-    let onCamera: () -> Void
     let requestBadge: Int
 
-    private let camD:     CGFloat = 56   // camera circle diameter
-    private let tabH:     CGFloat = 60   // tab row height
-    private let camGap:   CGFloat = 68   // transparent gap in HStack for camera
-
-    private var totalH: CGFloat { camD / 2 + tabH }
+    // Camera bubble diameter used only to size the centre gap
+    private let camD: CGFloat = 56
 
     var body: some View {
-        ZStack(alignment: .top) {
-            // Tab row — shifted down by camera radius so the bar top sits at
-            // the camera's centre line.
-            HStack(spacing: 0) {
-                navTab(.blips,    "play.square.stack", "blips")
-                navTab(.requests, "bell",              "inbox",  badge: requestBadge)
-                Color.clear.frame(width: camGap)   // camera gap
-                navTab(.friends,  "person.2",         "friends")
-                navTab(.profile,  "person",            "me")
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: tabH)
-            .offset(y: camD / 2)   // push row down so camera sits on top edge
-
-            // Camera bubble — top edge at y = 0, centre at y = camD/2
-            Button(action: onCamera) {
-                ZStack {
-                    // Subtle ring
-                    Circle()
-                        .stroke(BlipColor.navForeground.opacity(0.15), lineWidth: 3)
-                        .frame(width: camD + 8, height: camD + 8)
-
-                    Circle()
-                        .fill(BlipColor.accentNeutral)
-                        .frame(width: camD, height: camD)
-                        .shadow(color: BlipColor.accentNeutral.opacity(0.5),
-                                radius: 14, x: 0, y: -6)
-
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(BlipColor.accentNeutralOn)
-                }
-            }
-            .buttonStyle(_ScalePress())
-            .frame(maxWidth: .infinity)
-            .accessibilityLabel("open camera")
+        HStack(spacing: 0) {
+            navTab(.blips,    "play.square.stack", "blips")
+            navTab(.requests, "bell",              "inbox",  badge: requestBadge)
+            // Transparent gap where the camera button floats above
+            Color.clear.frame(width: camD + 12)
+            navTab(.friends,  "person.2",          "friends")
+            navTab(.profile,  "person",             "me")
         }
         .frame(maxWidth: .infinity)
-        .frame(height: totalH)
+        .frame(height: 64)
     }
 
-    // MARK: Generic nav tab
+    // MARK: Nav tab (icon always visible, label reveals on active)
 
     private func navTab(
         _ tab: HomeView.Tab, _ icon: String, _ label: String, badge: Int = 0
@@ -398,12 +390,11 @@ private struct SmoothBottomBar: View {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) { active = tab }
         } label: {
             HStack(spacing: 5) {
-                // Icon + optional badge
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: on ? "\(icon).fill" : icon)
                         .font(.system(size: 19, weight: on ? .bold : .medium))
-                        .foregroundStyle(on ? BlipColor.navForeground : BlipColor.navForegroundInactive)
-
+                        .foregroundStyle(on ? BlipColor.navForeground
+                                            : BlipColor.navForegroundInactive)
                     if badge > 0 {
                         ZStack {
                             Circle().fill(BlipColor.error).frame(width: 14, height: 14)
@@ -417,7 +408,6 @@ private struct SmoothBottomBar: View {
                 }
                 .frame(width: 22, height: 22)
 
-                // Label slides in when active
                 if on {
                     Text(label)
                         .font(.blip(size: 11, weight: .bold))
@@ -436,7 +426,7 @@ private struct SmoothBottomBar: View {
                     .fill(on ? BlipColor.accent.opacity(0.22) : .clear)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: tabH)
+            .frame(height: 64)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
