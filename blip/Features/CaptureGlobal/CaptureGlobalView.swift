@@ -134,7 +134,21 @@ struct CaptureGlobalView: View {
 
             Spacer()
 
-            Color.clear.frame(width: Self.dismissButtonSize, height: Self.dismissButtonSize)
+            Button {
+                Task { await session.flipCamera() }
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(BlipColor.surface.opacity(0.4))
+                        .frame(width: Self.dismissIconBackgroundSize, height: Self.dismissIconBackgroundSize)
+                    Image(systemName: "arrow.triangle.2.circlepath.camera")
+                        .font(BlipTypography.body)
+                        .foregroundStyle(BlipColor.textPrimary)
+                }
+                .frame(minWidth: Self.dismissButtonSize, minHeight: Self.dismissButtonSize)
+            }
+            .accessibilityLabel("flip camera")
+            .disabled(session.state == .recording)
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)

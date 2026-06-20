@@ -12,6 +12,8 @@ struct CapturePreview: UIViewRepresentable {
         view.previewLayer.videoGravity = .resizeAspect
         if #available(iOS 17, *) {
             view.previewLayer.connection?.videoRotationAngle = 0
+        } else {
+            view.previewLayer.connection?.videoOrientation = .landscapeRight
         }
         return view
     }

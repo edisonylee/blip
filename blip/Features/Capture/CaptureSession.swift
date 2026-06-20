@@ -143,6 +143,8 @@ final class CaptureSession: ObservableObject {
                     if let connection = movieOutput.connection(with: .video) {
                         if #available(iOS 17, *) {
                             connection.videoRotationAngle = 0  // landscape right (native sensor)
+                        } else if connection.isVideoOrientationSupported {
+                            connection.videoOrientation = .landscapeRight
                         }
                         if connection.isVideoMirroringSupported {
                             connection.isVideoMirrored = device.position == .front

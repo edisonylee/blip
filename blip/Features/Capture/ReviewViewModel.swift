@@ -1,3 +1,4 @@
+import Combine
 import FirebaseFirestore
 import Foundation
 
@@ -10,10 +11,18 @@ final class ReviewViewModel: ObservableObject {
     private let uploader = ClipUploader()
     private let db = Firestore.firestore()
     let primaryBlip: Blip
+    private var cancellables = Set<AnyCancellable>()
 
     init(blip: Blip) {
         self.primaryBlip = blip
         self.sendToBlipIds = [blip.id]
+        // ClipUploader's published properties (isUploading, progress) live on a
+        // separate ObservableObject. SwiftUI only re-renders when *this* VM's
+        // objectWillChange fires, so we pipe the uploader's changes through here.
+        uploader.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 
     var canPost: Bool { !sendToBlipIds.isEmpty && !uploader.isUploading }

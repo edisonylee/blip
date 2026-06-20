@@ -11,6 +11,7 @@ struct BlipDetailView: View {
     @EnvironmentObject private var auth: AuthService
     @EnvironmentObject private var moderation: ModerationService
     @EnvironmentObject private var blipsRepo: BlipRepository
+    @EnvironmentObject private var users: UserRepository
     @StateObject private var clips = ClipsRepository()
     @StateObject private var nudges = NudgeService()
     @StateObject private var profiles = UserProfilesRepository()
@@ -20,6 +21,8 @@ struct BlipDetailView: View {
     @State private var showInviteSheet = false
     @State private var showMembers = false
     @State private var showCapture = false
+    @State private var showArchive = false
+    @State private var showExport = false
     @State private var captionEditingClip: BlipClip?
     @State private var selectedHourOverride: Int?
     @State private var pendingNudgeeUid: String?
@@ -93,31 +96,8 @@ struct BlipDetailView: View {
                     .lineLimit(1)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 8) {
-                    Button { showMembers = true } label: {
-                        Image(systemName: "person.2")
-                            .foregroundStyle(BlipColor.textPrimary)
-                    }
-                    .accessibilityLabel("view members")
-                    NavigationLink {
-                        ArchiveView(blip: blip)
-                    } label: {
-                        Image(systemName: "calendar")
-                            .foregroundStyle(BlipColor.textPrimary)
-                    }
-                    .accessibilityLabel("archive")
-                    NavigationLink {
-                        ExportView(blip: blip)
-                    } label: {
-                        Image(systemName: "film")
-                            .foregroundStyle(BlipColor.textPrimary)
-                    }
-                    .accessibilityLabel("export")
-                    Button { showShareSheet = true } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .foregroundStyle(BlipColor.textPrimary)
-                    }
-                    .accessibilityLabel("share invite")
+                HStack(spacing: 16) {
+                    // Chat — primary action, always visible
                     NavigationLink {
                         ChatView(blip: blip)
                     } label: {
@@ -125,15 +105,46 @@ struct BlipDetailView: View {
                             .foregroundStyle(BlipColor.textPrimary)
                     }
                     .accessibilityLabel("chat")
+
+                    // Overflow — members, share, archive, export
+                    Menu {
+                        Button { showMembers = true } label: {
+                            Label("members", systemImage: "person.2")
+                        }
+                        Button { showShareSheet = true } label: {
+                            Label("share invite", systemImage: "square.and.arrow.up")
+                        }
+                        Divider()
+                        Button { showArchive = true } label: {
+                            Label("archive", systemImage: "calendar")
+                        }
+                        Button { showExport = true } label: {
+                            Label("export", systemImage: "film")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .foregroundStyle(BlipColor.textPrimary)
+                    }
                 }
             }
+        }
+        .navigationDestination(isPresented: $showArchive) {
+            ArchiveView(blip: blip)
+        }
+        .navigationDestination(isPresented: $showExport) {
+            ExportView(blip: blip)
         }
         .toolbarBackground(BlipColor.background, for: .navigationBar)
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(activityItems: [inviteShareText])
         }
         .sheet(isPresented: $showInviteSheet) {
-            ShareSheet(activityItems: [inviteShareText])
+            InviteSheet(
+                blip: blip,
+                currentUid: currentUid ?? "",
+                currentHandle: users.profile?.handle
+            )
+            .presentationDetents([.large])
         }
         .sheet(isPresented: $showMembers) {
             MembersSheet(blip: blip)

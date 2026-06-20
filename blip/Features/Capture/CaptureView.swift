@@ -108,6 +108,12 @@ struct CaptureView: View {
             if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
                 scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
             }
+            // onDisappear stops the AVCaptureSession when ReviewView is pushed.
+            // Restart it here so the preview and retake work when the user
+            // pops back without posting.
+            if session.state == .ready {
+                session.start()
+            }
         }
         .onDisappear {
             session.stop()
