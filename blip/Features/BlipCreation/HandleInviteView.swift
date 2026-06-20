@@ -96,6 +96,11 @@ struct HandleInviteView: View {
                 isFocused = true
             }
         }
+        .onDisappear {
+            // Cancel any in-flight Firestore lookup so it doesn't write to
+            // state after the view is gone.
+            lookupTask?.cancel()
+        }
     }
 
     // MARK: - Found card

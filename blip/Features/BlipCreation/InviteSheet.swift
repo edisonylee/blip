@@ -74,7 +74,9 @@ struct InviteSheet: View {
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(activityItems: [inviteText])
         }
-        .sheet(isPresented: $showScanner) {
+        // Use fullScreenCover instead of .sheet so we never nest two sheets
+        // (sheet-in-sheet crashes on iOS < 16.4).
+        .fullScreenCover(isPresented: $showScanner) {
             QRScannerSheet(onScanned: { raw in
                 showScanner = false
                 if let handle = QRScannerView.extractHandle(from: raw) {
@@ -83,8 +85,6 @@ struct InviteSheet: View {
                 }
             }, onCancel: { showScanner = false })
         }
-        // Pre-fill handle tab when a QR scan resolved a handle
-        .onChange(of: scannedHandle) { _, _ in }
     }
 
     // MARK: - Tab picker
