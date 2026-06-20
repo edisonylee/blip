@@ -29,7 +29,7 @@ struct BlipDetailView: View {
 
     var body: some View {
         ZStack {
-            BlipColor.background.ignoresSafeArea()
+            BlipColor.backgroundGradient.ignoresSafeArea()
 
             ScrollView {
                 VStack(spacing: 16) {
@@ -134,7 +134,7 @@ struct BlipDetailView: View {
         .navigationDestination(isPresented: $showExport) {
             ExportView(blip: blip)
         }
-        .toolbarBackground(BlipColor.background, for: .navigationBar)
+        .toolbarBackground(BlipColor.backgroundGradient, for: .navigationBar)
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(activityItems: [inviteShareText])
         }

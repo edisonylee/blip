@@ -1,135 +1,121 @@
 import SwiftUI
 import UIKit
 
-/// Adaptive color tokens. Every value responds automatically to light / dark mode
-/// (driven by `.preferredColorScheme` at the app root via `ThemeManager`).
-///
-/// Dark palette:  pure black surfaces, neutral cool grays, white primary type.
-/// Light palette: warm cream surfaces, near-black type, amber semantic accent.
-/// 
+/// Design-system color tokens — light-only pastel theme.
+/// Dark mode is not supported in this branch; all values are fixed
+/// (the `adaptive()` helper is kept for the border/progress tokens that
+/// do check OS style, but the theme is always forced to `.light` in `blipApp`).
 enum BlipColor {
+
     // MARK: - Surfaces
-    /// App background — pure black in dark, warm cream in light.
-    static let background = adaptive(
-        dark:  0x000000,
-        light: 0x000000
+
+    /// Main screen background — soft lavender used as the flat fallback
+    /// in sheets and secondary screens. Primary screens use `backgroundGradient`.
+    static let background = Color(hex: 0xF6F0FF)
+
+    /// Card / list-row surface.
+    static let surface = Color.white
+
+    /// Elevated surface (sheets, popovers, picker cards).
+    static let surfaceElevated = Color(hex: 0xFAF8FF)
+
+    /// Hairline border / divider. Very light violet tint.
+    static let border = Color(hex: 0xDDD6FE).opacity(0.7)
+
+    // MARK: - Gradient background
+
+    /// Multi-stop gradient applied to the root content area of main screens.
+    /// Lavender → blush pink → soft mint — replicates the dreamy pastel look
+    /// in the design reference.
+    static let backgroundGradient = LinearGradient(
+        stops: [
+            .init(color: Color(hex: 0xEDE9FE), location: 0.00),   // violet-100
+            .init(color: Color(hex: 0xFCE7F3), location: 0.50),   // pink-100
+            .init(color: Color(hex: 0xD1FAE5), location: 1.00),   // emerald-100
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
     )
 
-    /// Card / list row surface.
-    static let surface = adaptive(
-        dark: 0x4A4A4A,
-        light: 0x4A4A4A
-    )
+    // MARK: - Navigation bar (always dark, even in light theme)
 
-    /// Elevated surface (sheets, popovers).
-    static let surfaceElevated = adaptive(
-        dark:  0x393939,
-        light: 0x393939
-    )
-
-    static let border = Color(uiColor: UIColor { t in
-        t.userInterfaceStyle == .dark
-            ? UIColor.white.withAlphaComponent(0.10)
-            : UIColor.black.withAlphaComponent(0.08)
-    })
+    /// Solid deep-purple-black used as the SmoothBottomBar tray background.
+    /// Kept dark so the white icon/label contrast pops against the pastel screens.
+    static let navBackground  = Color(hex: 0x160628)
+    static let navForeground  = Color.white
+    static let navForegroundInactive = Color.white.opacity(0.38)
 
     // MARK: - Type
 
-    static let textPrimary = adaptive(
-        dark:  0xFFFFFF,
-        light: 0xFFFFFF,
-    )
-
-    static let textSecondary = adaptive(
-        dark:  0xFFFFFF,
-        light: 0xFFFFFF
-    )
-
-    static let textTertiary = adaptive(
-        dark:  0xFFFFFF,
-        light: 0xFFFFFF
-    )
+    static let textPrimary   = Color(hex: 0x1E1B4B)   // deep indigo
+    static let textSecondary = Color(hex: 0x7C6FA0)   // muted purple-gray
+    static let textTertiary  = Color(hex: 0xB0A8C8)   // faded purple
 
     // MARK: - Accent
 
-    /// Warm-amber semantic accent — reserved for live/recording states (progress
-    /// fill, active dot). No longer the primary CTA color in dark mode.
-    static let accent = Color(red: 1.19, green: 1.19, blue: 1.19)   // #777777
+    /// Semantic accent — recording dot, progress fill, active-hour indicator.
+    static let accent = Color(hex: 0x8B5CF6)           // violet-500
 
-    /// Neutral CTA fill — white in dark, near-black in light. Use for primary
-    /// buttons; contrast (not hue) carries the "moment that matters."
-    static let accentNeutral = adaptive(
-        dark:  0xFFFFFF,
-        light: 0x1A1512
-    )
+    /// Primary CTA fill — deep violet for buttons and the plus FAB.
+    static let accentNeutral   = Color(hex: 0x7C3AED)  // violet-600
+    /// Foreground that pairs with `accentNeutral`.
+    static let accentNeutralOn = Color.white
 
-    /// Foreground that pairs with `accentNeutral` (inverse of it).
-    static let accentNeutralOn = adaptive(
-        dark:  0x000000,
-        light: 0xF5F0EB
-    )
+    // MARK: - Semantic / fixed
 
-    // MARK: - Semantic states
-
-    /// Always-black fill for "no clip posted" cells in the member grid — matches
-    /// the stitched export pipeline's black frame for missing footage.
+    /// Always-black fill for "no clip posted" grid cells — matches the
+    /// stitched export pipeline's black frame for missing footage.
     static let blackCell = Color.black
 
-    /// Fixed white overlay for text rendered on top of video content.
-    /// Not theme-adaptive — video is always dark underneath.
+    /// Fixed white text rendered directly on video content.
     static let onMedia = Color.white
 
-    /// Pure-black backdrop for camera viewfinders and fullscreen media viewers.
-    /// Also the base for partial-coverage scrims drawn over media — apply
-    /// `.opacity(...)` for the scrim intensity needed.
-    /// Not theme-adaptive: viewfinders and media chrome are always rendered dark.
+    /// Pure-black backdrop for camera viewfinders and fullscreen media.
     static let mediaBackdrop = Color.black
 
-    /// Invisible tap-target catcher. Use to claim taps on an otherwise empty
-    /// region without showing a visible surface.
+    /// Near-invisible tap-target catcher.
     static let touchProxy = Color.black.opacity(0.001)
 
-    /// Inline error text. Warm rose — readable on both dark and light surfaces.
-    static let error = adaptive(
-        dark:  0xE87070,
-        light: 0xE87070
-    )
+    /// Inline error — warm red readable on both white cards and the gradient.
+    static let error = Color(hex: 0xEF4444)
 
     // MARK: - Progress ring
-    static let progressTrack = Color(uiColor: UIColor { t in
-        t.userInterfaceStyle == .dark
-            ? UIColor.white.withAlphaComponent(0.08)
-            : UIColor.black.withAlphaComponent(0.10)
-    })
 
-    static let progressFill = accent
+    static let progressTrack = Color(hex: 0xEDE9FE)   // violet-100
+    static let progressFill  = accent
 
     // MARK: - Card palette
 
-    /// Muted, dark background colors for blipchat cards. Picked by hashing the
-    /// blip ID so each room gets a consistent color across sessions.
+    /// Vibrant, saturated card colors — each blip room gets one, hashed by ID.
+    /// Designed to contrast white avatar initials and white title text (`onMedia`).
     static let cardPalette: [Color] = [
-        Color(uiColor: UIColor(hex: 0x3C4869)),  // navy
-        Color(uiColor: UIColor(hex: 0x573D3D)),  // maroon
-        Color(uiColor: UIColor(hex: 0x4E4A39)),  // olive
-        Color(uiColor: UIColor(hex: 0x2B3B27)),  // forest
-        Color(uiColor: UIColor(hex: 0x33254A)),  // plum
-        Color(uiColor: UIColor(hex: 0x1A3340)),  // teal
+        Color(hex: 0x7C3AED),   // violet
+        Color(hex: 0xDB2777),   // pink
+        Color(hex: 0x2563EB),   // blue
+        Color(hex: 0x059669),   // emerald
+        Color(hex: 0xD97706),   // amber
+        Color(hex: 0x9333EA),   // purple
     ]
 
-    // MARK: - Helpers
+    // MARK: - Hex convenience
 
-    private static func adaptive(dark darkHex: UInt32, light lightHex: UInt32) -> Color {
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(hex: darkHex)
-                : UIColor(hex: lightHex)
-        })
+    static func hex(_ value: UInt32) -> Color { Color(hex: value) }
+}
+
+// MARK: - UIColor + Color hex init
+
+extension Color {
+    init(hex: UInt32) {
+        let r = Double((hex >> 16) & 0xFF) / 255
+        let g = Double((hex >>  8) & 0xFF) / 255
+        let b = Double( hex        & 0xFF) / 255
+        self.init(red: r, green: g, blue: b)
     }
 }
 
-// MARK: - UIColor hex convenience
-private extension UIColor {
+// Keep the private UIColor extension for any code that still constructs
+// UIColor(hex:) directly (e.g. AvatarView stroke colors).
+extension UIColor {
     convenience init(hex: UInt32) {
         let r = CGFloat((hex >> 16) & 0xFF) / 255
         let g = CGFloat((hex >>  8) & 0xFF) / 255

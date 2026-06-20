@@ -69,7 +69,7 @@ private struct ProfileContent: View {
 
     var body: some View {
         ZStack {
-            BlipColor.background.ignoresSafeArea()
+            BlipColor.backgroundGradient.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 topBar

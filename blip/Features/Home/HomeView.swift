@@ -21,7 +21,8 @@ struct HomeView: View {
     var body: some View {
         NavigationStack(path: $path) {
             ZStack {
-                BlipColor.background.ignoresSafeArea()
+                // Pastel gradient fills the entire root canvas.
+                BlipColor.backgroundGradient.ignoresSafeArea()
 
                 // ── Main layout ──────────────────────────────────────────
                 VStack(spacing: 0) {
@@ -140,13 +141,14 @@ struct HomeView: View {
 
     private var smoothBar: some View {
         VStack(spacing: 0) {
+            // Feather the gradient into the dark nav tray
             Rectangle()
-                .fill(BlipColor.border)
+                .fill(BlipColor.navBackground.opacity(0.18))
                 .frame(height: 0.5)
             SmoothBottomBar(active: $activeTab, onCamera: handleCameraTab)
         }
         .background {
-            BlipColor.surface.ignoresSafeArea(edges: .bottom)
+            BlipColor.navBackground.ignoresSafeArea(edges: .bottom)
         }
     }
 
@@ -177,9 +179,10 @@ struct HomeView: View {
             Button { } label: {
                 Image(systemName: "bell")
                     .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(BlipColor.textPrimary)
+                    .foregroundStyle(BlipColor.textSecondary)
                     .frame(width: 40, height: 40)
-                    .background(BlipColor.surface, in: Circle())
+                    .background(BlipColor.surface.opacity(0.8), in: Circle())
+                    .shadow(color: BlipColor.accent.opacity(0.12), radius: 6, x: 0, y: 2)
             }
         }
         .padding(.horizontal, 20)
@@ -334,7 +337,7 @@ private struct SmoothBottomBar: View {
                 // "smooth glide" that defines this bar style.
                 if active != .camera {
                     Capsule()
-                        .fill(Color.white.opacity(0.11))
+                        .fill(BlipColor.accent.opacity(0.22))
                         .frame(width: colW * 0.72, height: 42)
                         .offset(x: pillOffset(colW: colW))
                         .animation(
@@ -392,13 +395,13 @@ private struct SmoothBottomBar: View {
             VStack(spacing: 5) {
                 Image(systemName: on ? activeIcon : inactiveIcon)
                     .font(.system(size: 21, weight: on ? .bold : .medium))
-                    .foregroundStyle(on ? Color.white : Color.white.opacity(0.36))
+                    .foregroundStyle(on ? BlipColor.navForeground : BlipColor.navForegroundInactive)
                     .scaleEffect(on ? 1.06 : 1.0)
                     .animation(.spring(response: 0.25, dampingFraction: 0.6), value: on)
 
                 Text(label)
                     .font(.blip(size: 10, weight: on ? .bold : .medium))
-                    .foregroundStyle(on ? Color.white : Color.white.opacity(0.36))
+                    .foregroundStyle(on ? BlipColor.navForeground : BlipColor.navForegroundInactive)
             }
             .frame(width: colW)
             .contentShape(Rectangle())
@@ -406,23 +409,23 @@ private struct SmoothBottomBar: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: Camera tab (white circle — not part of the indicator system)
+    // MARK: Camera tab (accent circle — pops against the dark tray)
 
     private func cameraTab(colW: CGFloat) -> some View {
         Button(action: onCamera) {
             VStack(spacing: 5) {
                 ZStack {
                     Circle()
-                        .fill(Color.white)
+                        .fill(BlipColor.accentNeutral)
                         .frame(width: 44, height: 44)
-                        .shadow(color: .white.opacity(0.14), radius: 8, x: 0, y: 2)
+                        .shadow(color: BlipColor.accentNeutral.opacity(0.4), radius: 8, x: 0, y: 2)
                     Image(systemName: "camera.fill")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(Color.black)
+                        .foregroundStyle(BlipColor.accentNeutralOn)
                 }
                 Text("camera")
                     .font(.blip(size: 10, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.36))
+                    .foregroundStyle(BlipColor.navForegroundInactive)
             }
             .frame(width: colW)
         }

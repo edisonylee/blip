@@ -33,7 +33,8 @@ struct blipApp: App {
                 .environmentObject(userDirectory)
                 .environmentObject(deepLinks)
                 .environmentObject(theme)
-                .preferredColorScheme(theme.preference.colorScheme)
+                // Theme branch: light-only pastel UI — dark mode removed.
+                .preferredColorScheme(.light)
                 .onAppear {
                     appDelegate.users = users
                     appDelegate.deepLinks = deepLinks
