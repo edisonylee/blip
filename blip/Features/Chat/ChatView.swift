@@ -122,41 +122,42 @@ struct ChatView: View {
     @State private var showImageGallery = false
     @FocusState private var inputFocused: Bool
 
+    // Audio recording state
+    @StateObject private var audioRec = AudioRecorder()
+    @State private var pendingAudioURL: URL?
+    @State private var pendingAudioBars: [CGFloat] = []
+    @State private var pendingAudioDuration: TimeInterval = 0
+    @State private var isSendingAudio = false
+
     var body: some View {
         ZStack {
-            BlipColor.background.ignoresSafeArea()
+            BlipColor.backgroundGradient.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                memberStrip
-
-                Rectangle()
-                    .fill(BlipColor.border)
-                    .frame(height: 0.5)
-
                 messageList
-
                 chatErrorBanner
-
                 inputBar
             }
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {
-                    Text("chat")
-                        .font(BlipTypography.body)
+                    Text(blip.name)
+                        .font(.blip(size: 15, weight: .bold))
                         .foregroundStyle(BlipColor.textPrimary)
+                        .lineLimit(1)
                     if !memberSubtitle.isEmpty {
                         Text(memberSubtitle)
-                            .font(.blip(size: 11))
+                            .font(.blip(size: 10))
                             .foregroundStyle(BlipColor.textTertiary)
                             .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                 }
-                .multilineTextAlignment(.center)
+                .frame(maxWidth: 220)
             }
         }
-        .toolbarBackground(BlipColor.background, for: .navigationBar)
+        .toolbarBackground(BlipColor.surface, for: .navigationBar)
         .task(id: blip.id) {
             repo.startListening(blipId: blip.id)
             repo.setBlocklist(moderation.blockedUsers)
@@ -215,56 +216,51 @@ struct ChatView: View {
         }
     }
 
-    private var sheetBg: Color {
-        Color(uiColor: UIColor { t in
-            t.userInterfaceStyle == .dark
-                ? UIColor(white: 0.07, alpha: 1)
-                : UIColor(white: 0.97, alpha: 1)
-        })
-    }
+    private var sheetBg: Color { BlipColor.background }
 
     // MARK: - Member strip
 
     private var memberStrip: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(collapsedMemberIds, id: \.self) { uid in
-                            MemberNameLink(
-                                uid: uid,
-                                label: userProfiles.chatLabel(for: uid)
-                            )
-                        }
-
-                        if !isMemberStripExpanded && blip.members.count > collapsedMemberIds.count {
-                            Text("+\(blip.members.count - collapsedMemberIds.count)")
-                                .font(.blip(size: 12, weight: .medium))
-                                .foregroundStyle(BlipColor.textTertiary)
-                                .padding(.horizontal, 8)
-                                .frame(height: 24)
-                        }
+        HStack(spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(collapsedMemberIds, id: \.self) { uid in
+                        MemberNameLink(
+                            uid: uid,
+                            label: userProfiles.chatLabel(for: uid)
+                        )
+                    }
+                    if !isMemberStripExpanded && blip.members.count > collapsedMemberIds.count {
+                        Text("+\(blip.members.count - collapsedMemberIds.count)")
+                            .font(.blip(size: 11, weight: .medium))
+                            .foregroundStyle(BlipColor.textTertiary)
+                            .padding(.horizontal, 8)
+                            .frame(height: 22)
                     }
                 }
-
-                Button {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        isMemberStripExpanded.toggle()
-                    }
-                } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.blip(size: 11, weight: .semibold))
-                        .foregroundStyle(BlipColor.textTertiary)
-                        .frame(width: 28, height: 28)
-                        .rotationEffect(.degrees(isMemberStripExpanded ? 180 : 0))
-                }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
             }
-            .padding(.leading, 12)
+
+            Button {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                    isMemberStripExpanded.toggle()
+                }
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(BlipColor.textTertiary)
+                    .rotationEffect(.degrees(isMemberStripExpanded ? 180 : 0))
+                    .animation(.spring(response: 0.28), value: isMemberStripExpanded)
+                    .frame(width: 32, height: 32)
+            }
+            .buttonStyle(.plain)
             .padding(.trailing, 8)
-            .frame(height: 34)
         }
-        .background(BlipColor.surface)
+        .frame(height: 38)
+        .background(Color.white.opacity(0.72))
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(BlipColor.border).frame(height: 0.5)
+        }
     }
 
     private var collapsedMemberIds: [String] {
@@ -370,83 +366,118 @@ struct ChatView: View {
         VStack(spacing: 0) {
             Rectangle().fill(BlipColor.border).frame(height: 0.5)
 
-            HStack(spacing: 6) {
-                // Emoji button
-                Button {
-                    inputFocused = false
-                    showEmojiSheet = true
-                } label: {
-                    Text("😊")
-                        .font(.system(size: 24))
-                        .frame(width: 38, height: 38)
-                }
-                .accessibilityLabel("emoji keyboard")
-
-                // Photo picker (max 10)
-                PhotosPicker(
-                    selection: $pickedPhotos,
-                    maxSelectionCount: 10,
-                    matching: .images
-                ) {
-                    ZStack(alignment: .topTrailing) {
-                        Circle()
-                            .fill(chatSurface)
-                            .frame(width: 38, height: 38)
-                        if isLoadingImages {
-                            ProgressView().scaleEffect(0.7).tint(BlipColor.textSecondary)
-                        } else {
-                            Image(systemName: "photo")
-                                .font(.blip(size: 17, weight: .medium))
-                                .foregroundStyle(BlipColor.textSecondary)
+            if audioRec.isRecording {
+                // ── Recording state ──────────────────────────────────────
+                recordingBar
+            } else if pendingAudioURL != nil {
+                // ── Preview & send state ──────────────────────────────────
+                AudioPreviewBar(
+                    bars: pendingAudioBars,
+                    duration: pendingAudioDuration,
+                    previewURL: pendingAudioURL,
+                    onDelete: {
+                        if let url = pendingAudioURL {
+                            try? FileManager.default.removeItem(at: url)
                         }
-                        if !pickedPhotos.isEmpty {
-                            Text("\(pickedPhotos.count)")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(minWidth: 14, minHeight: 14)
-                                .padding(.horizontal, 2)
-                                .background(BlipColor.accentNeutral, in: Capsule())
-                                .offset(x: 4, y: -4)
+                        pendingAudioURL = nil
+                        pendingAudioBars = []
+                        pendingAudioDuration = 0
+                    },
+                    onSend: { Task { await sendAudio() } },
+                    isSending: isSendingAudio
+                )
+            } else {
+                // ── Normal input ──────────────────────────────────────────
+                HStack(spacing: 8) {
+                    // Emoji button
+                    Button {
+                        inputFocused = false
+                        showEmojiSheet = true
+                    } label: {
+                        Text("😊")
+                            .font(.system(size: 22))
+                            .frame(width: 36, height: 36)
+                    }
+                    .accessibilityLabel("emoji keyboard")
+
+                    // Photo picker (max 10)
+                    PhotosPicker(
+                        selection: $pickedPhotos,
+                        maxSelectionCount: 10,
+                        matching: .images
+                    ) {
+                        ZStack(alignment: .topTrailing) {
+                            Circle()
+                                .fill(chatSurface)
+                                .frame(width: 36, height: 36)
+                            if isLoadingImages {
+                                ProgressView().scaleEffect(0.65).tint(BlipColor.textSecondary)
+                            } else {
+                                Image(systemName: "photo")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundStyle(BlipColor.textSecondary)
+                            }
+                            if !pickedPhotos.isEmpty {
+                                Text("\(pickedPhotos.count)")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(minWidth: 14, minHeight: 14)
+                                    .padding(.horizontal, 2)
+                                    .background(BlipColor.accentNeutral, in: Capsule())
+                                    .offset(x: 4, y: -4)
+                            }
                         }
                     }
-                }
-                .disabled(isLoadingImages)
-                .accessibilityLabel("attach photos, max 10")
+                    .disabled(isLoadingImages)
 
-                // Text field
-                TextField(
-                    "",
-                    text: $draft,
-                    prompt: Text("message…").foregroundStyle(BlipColor.textTertiary),
-                    axis: .vertical
-                )
-                .lineLimit(1...5)
-                .focused($inputFocused)
-                .submitLabel(.send)
-                .onSubmit { if canSend { send() } }
-                .onChange(of: draft) { _, new in
-                    repo.updateTyping(isTyping: !new.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    // Text field
+                    TextField(
+                        "",
+                        text: $draft,
+                        prompt: Text("message…").foregroundStyle(BlipColor.textTertiary),
+                        axis: .vertical
+                    )
+                    .lineLimit(1...5)
+                    .focused($inputFocused)
+                    .submitLabel(.send)
+                    .onSubmit { if canSend { send() } }
+                    .onChange(of: draft) { _, new in
+                        repo.updateTyping(isTyping: !new.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(chatSurface, in: Capsule())
+                    .foregroundStyle(BlipColor.textPrimary)
+                    .tint(BlipColor.accentNeutral)
+
+                    // Send button (text) OR mic button (when draft empty)
+                    if canSend {
+                        Button(action: send) {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 36, height: 36)
+                                .background(BlipColor.accentNeutral, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .transition(.scale.combined(with: .opacity))
+                    } else {
+                        Button { Task { await toggleRecording() } } label: {
+                            Image(systemName: "mic.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(BlipColor.textSecondary)
+                                .frame(width: 36, height: 36)
+                                .background(chatSurface, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .transition(.scale.combined(with: .opacity))
+                    }
                 }
+                .animation(.spring(response: 0.25, dampingFraction: 0.75), value: canSend)
                 .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(chatSurface, in: Capsule())
-                .foregroundStyle(chatFg)
-                .tint(BlipColor.accentNeutral)
-
-                // Send button
-                Button(action: send) {
-                    Image(systemName: "arrow.up")
-                        .font(.blip(size: 16, weight: .semibold))
-                        .foregroundStyle(canSend ? sendIconFg : BlipColor.textTertiary)
-                        .frame(width: 38, height: 38)
-                        .background(canSend ? BlipColor.accentNeutral : chatSurface, in: Circle())
-                        .animation(.easeInOut(duration: 0.15), value: canSend)
-                }
-                .disabled(!canSend)
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.9))
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(BlipColor.background)
         }
     }
 
@@ -479,25 +510,131 @@ struct ChatView: View {
         }
     }
 
-    // MARK: - Adaptive colors
+    // MARK: - Recording bar (shown while mic is active)
 
-    private var chatSurface: Color {
-        Color(uiColor: UIColor { t in
-            t.userInterfaceStyle == .dark
-                ? UIColor(white: 0.13, alpha: 1)
-                : UIColor(white: 0.88, alpha: 1)
-        })
+    private var recordingBar: some View {
+        HStack(spacing: 12) {
+            // Cancel / delete recording
+            Button { audioRec.cancel() } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(BlipColor.error)
+                    .frame(width: 36, height: 36)
+                    .background(BlipColor.error.opacity(0.10), in: Circle())
+            }
+            .buttonStyle(.plain)
+
+            // Live waveform + timer
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(BlipColor.error)
+                    .frame(width: 8, height: 8)
+                    .opacity(0.85)
+
+                AudioWaveformView(
+                    bars: audioRec.liveBars,
+                    progress: 0,
+                    activeColor: BlipColor.accentNeutral,
+                    inactiveColor: Color.black.opacity(0.10),
+                    isAnimating: true
+                )
+                .frame(maxWidth: .infinity)
+
+                Text(formatAudio(audioRec.elapsed))
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(BlipColor.textPrimary)
+                    .frame(width: 36)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.05), in: Capsule())
+
+            // Stop and go to preview
+            Button { stopAndPreviewAudio() } label: {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(BlipColor.accentNeutral, in: Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.9))
     }
 
-    private var chatFg: Color {
-        Color(uiColor: UIColor { t in
-            t.userInterfaceStyle == .dark ? UIColor(white: 0.95, alpha: 1) : UIColor(white: 0.08, alpha: 1)
-        })
+    private func formatAudio(_ t: TimeInterval) -> String {
+        let s = Int(t)
+        return String(format: "%d:%02d", s / 60, s % 60)
     }
 
-    private var sendIconFg: Color {
-        Color(uiColor: UIColor { t in t.userInterfaceStyle == .dark ? .black : .white })
+    // MARK: - Audio recording helpers
+
+    private func toggleRecording() async {
+        guard case .signedIn = auth.state else { return }
+        let granted = await audioRec.requestPermission()
+        guard granted else { return }
+        if audioRec.isRecording {
+            stopAndPreviewAudio()
+        } else {
+            inputFocused = false
+            audioRec.start()
+        }
     }
+
+    private func stopAndPreviewAudio() {
+        guard let result = audioRec.stop() else { return }
+        let (url, duration, waveform) = result
+        pendingAudioURL = url
+        pendingAudioDuration = duration
+        pendingAudioBars = waveform.map { CGFloat($0) }
+    }
+
+    private func sendAudio() async {
+        guard
+            let url = pendingAudioURL,
+            case .signedIn(let uid) = auth.state
+        else { return }
+        isSendingAudio = true
+        defer { isSendingAudio = false }
+        do {
+            let ref = Storage.storage().reference()
+                .child("chat-audio/\(blip.id)/\(uid)/\(UUID().uuidString).m4a")
+            let meta = StorageMetadata()
+            meta.contentType = "audio/mp4"
+            let audioUrlString: String = try await withCheckedThrowingContinuation { cont in
+                ref.putFile(from: url, metadata: meta) { _, err in
+                    if let err { cont.resume(throwing: err); return }
+                    Task {
+                        do { cont.resume(returning: try await ref.downloadURL().absoluteString) }
+                        catch { cont.resume(throwing: error) }
+                    }
+                }
+            }
+            let waveform = pendingAudioBars.map { Float($0) }
+            try await MessagesRepository.postAudioMessage(
+                blipId: blip.id,
+                blipName: blip.name,
+                senderName: userProfiles.chatLabel(for: uid),
+                uid: uid,
+                audioUrl: audioUrlString,
+                duration: pendingAudioDuration,
+                waveform: waveform
+            )
+            try? FileManager.default.removeItem(at: url)
+            pendingAudioURL = nil
+            pendingAudioBars = []
+            pendingAudioDuration = 0
+        } catch {
+            imageSendError = "Audio send failed: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Light-only colours
+
+    /// Input field pill background — barely-there on the white bar.
+    private var chatSurface: Color { Color.black.opacity(0.055) }
 
     // MARK: - Helpers
 
@@ -673,14 +810,8 @@ private struct EmojiSheet: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .background(
-                Color(uiColor: UIColor { t in
-                    t.userInterfaceStyle == .dark
-                        ? UIColor(white: 0.14, alpha: 1)
-                        : UIColor(white: 0.89, alpha: 1)
-                }),
-                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-            )
+            .background(Color.black.opacity(0.06),
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .padding(.horizontal, 16)
             .padding(.top, 12)
             .padding(.bottom, 8)
@@ -757,13 +888,7 @@ private struct EmojiSheet: View {
             }
             .padding(.horizontal, 8)
         }
-        .background(
-            Color(uiColor: UIColor { t in
-                t.userInterfaceStyle == .dark
-                    ? UIColor(white: 0.06, alpha: 1)
-                    : UIColor(white: 0.94, alpha: 1)
-            })
-        )
+        .background(Color.white.opacity(0.92))
         .overlay(alignment: .top) {
             Rectangle().fill(BlipColor.border).frame(height: 0.5)
         }
@@ -1010,19 +1135,18 @@ private struct MemberNameLink: View {
             UserProfileView(uid: uid)
         } label: {
             Text(label)
-                .font(.blip(size: 12, weight: .medium))
-                .foregroundStyle(BlipColor.textSecondary)
+                .font(.blip(size: 11, weight: .semibold))
+                .foregroundStyle(BlipColor.accentNeutral)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .padding(.horizontal, 10)
-                .frame(height: 24)
+                .frame(height: 22)
                 .background(
-                    Color(uiColor: UIColor { t in
-                        t.userInterfaceStyle == .dark
-                            ? UIColor(white: 0.16, alpha: 1)
-                            : UIColor(white: 0.91, alpha: 1)
-                    }),
+                    BlipColor.accentNeutral.opacity(0.1),
                     in: Capsule()
+                )
+                .overlay(
+                    Capsule().stroke(BlipColor.accentNeutral.opacity(0.25), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
@@ -1073,6 +1197,12 @@ private struct MessageRow: View {
                                 onOpenImages(message.imageUrls)
                             }
                         }
+                    case .audio:
+                        AudioMessageBubble(
+                            message: message,
+                            isMe: isMe,
+                            senderLabel: senderLabel
+                        )
                     }
                 }
 
@@ -1119,11 +1249,7 @@ private struct DeletedMessageBubble: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
         .background(
-            Color(uiColor: UIColor { t in
-                t.userInterfaceStyle == .dark
-                    ? UIColor(white: 0.14, alpha: 1)
-                    : UIColor(white: 0.92, alpha: 1)
-            }),
+            Color.black.opacity(0.06),
             in: RoundedRectangle(cornerRadius: 18, style: .continuous)
         )
     }
@@ -1134,8 +1260,8 @@ private struct TickMark: View {
 
     private var tint: Color {
         status == .seen
-            ? Color(red: 0.18, green: 0.55, blue: 1.0)
-            : Color(uiColor: UIColor(white: 0.55, alpha: 1))
+            ? Color(red: 0.18, green: 0.55, blue: 1.0)   // blue when seen
+            : Color.white.opacity(0.65)                    // white on rose bubble
     }
 
     var body: some View {
@@ -1159,18 +1285,12 @@ private struct DateChip: View {
         HStack {
             Spacer()
             Text(text)
-                .font(.blip(size: 11, weight: .medium))
+                .font(.blip(size: 11, weight: .semibold))
                 .foregroundStyle(BlipColor.textTertiary)
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 12)
                 .padding(.vertical, 5)
-                .background(
-                    Color(uiColor: UIColor { t in
-                        t.userInterfaceStyle == .dark
-                            ? UIColor(white: 0.16, alpha: 1)
-                            : UIColor(white: 0.90, alpha: 1)
-                    }),
-                    in: Capsule()
-                )
+                .background(Color.white.opacity(0.72), in: Capsule())
+                .shadow(color: .black.opacity(0.05), radius: 3, x: 0, y: 1)
             Spacer()
         }
         .padding(.vertical, 6)
@@ -1215,17 +1335,7 @@ private struct SkeletonBubbleRow: View {
     let phase: CGFloat
 
     private var baseColor: Color {
-        Color(uiColor: UIColor { t in
-            if isMe {
-                return t.userInterfaceStyle == .dark
-                    ? UIColor(white: 0.22, alpha: 1)
-                    : UIColor(white: 0.18, alpha: 1)
-            } else {
-                return t.userInterfaceStyle == .dark
-                    ? UIColor(white: 0.20, alpha: 1)
-                    : UIColor(white: 0.80, alpha: 1)
-            }
-        })
+        isMe ? BlipColor.accentNeutral.opacity(0.30) : Color.black.opacity(0.09)
     }
 
     var body: some View {
@@ -1258,39 +1368,20 @@ private struct TextBubble: View {
     let text: String
     let isMe: Bool
 
-    private var bg: Color {
-        Color(uiColor: UIColor { t in
-            if isMe {
-                return t.userInterfaceStyle == .dark
-                    ? UIColor(white: 0.96, alpha: 1)
-                    : UIColor(white: 0.10, alpha: 1)
-            } else {
-                return t.userInterfaceStyle == .dark
-                    ? UIColor(white: 0.18, alpha: 1)
-                    : UIColor(white: 0.84, alpha: 1)
-            }
-        })
-    }
-
-    private var fg: Color {
-        Color(uiColor: UIColor { t in
-            if isMe {
-                return t.userInterfaceStyle == .dark ? UIColor(white: 0.06, alpha: 1) : UIColor(white: 0.95, alpha: 1)
-            } else {
-                return t.userInterfaceStyle == .dark ? UIColor(white: 0.94, alpha: 1) : UIColor(white: 0.08, alpha: 1)
-            }
-        })
-    }
+    // Me = rose accent;  Others = white glass
+    private var bg: Color { isMe ? BlipColor.accentNeutral : Color.white.opacity(0.90) }
+    private var fg: Color { isMe ? Color.white           : BlipColor.textPrimary      }
 
     var body: some View {
         TailedBubble(isMe: isMe, fill: bg) {
             Text(text)
-                .font(BlipTypography.body)
+                .font(.blip(size: 15))
                 .foregroundStyle(fg)
                 .padding(.leading, isMe ? 13 : 18)
                 .padding(.trailing, isMe ? 18 : 13)
                 .padding(.vertical, 9)
         }
+        .shadow(color: .black.opacity(isMe ? 0.10 : 0.06), radius: 4, x: 0, y: 2)
     }
 }
 
@@ -1565,7 +1656,7 @@ private struct ImageGridShell<Cell: View>: View {
                 clippedCell(2)
                 if showCountOverlay {
                     ZStack {
-                        Color(uiColor: UIColor(white: 0.08, alpha: 1))
+                        Color.black.opacity(0.35)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                         Text("+\(extraCount)")
                             .font(.blip(size: 22, weight: .bold))
@@ -1591,17 +1682,13 @@ private struct ImageGridShell<Cell: View>: View {
 }
 
 private var imageLoadingView: some View {
-    Color(uiColor: UIColor { t in
-        t.userInterfaceStyle == .dark ? UIColor(white: 0.18, alpha: 1) : UIColor(white: 0.84, alpha: 1)
-    })
-    .overlay(ProgressView().tint(BlipColor.textTertiary))
+    Color.black.opacity(0.07)
+        .overlay(ProgressView().tint(BlipColor.textTertiary))
 }
 
 private var imageFailureView: some View {
     ZStack {
-        Color(uiColor: UIColor { t in
-            t.userInterfaceStyle == .dark ? UIColor(white: 0.18, alpha: 1) : UIColor(white: 0.84, alpha: 1)
-        })
+        Color.black.opacity(0.07)
         VStack(spacing: 5) {
             Image(systemName: "photo")
             Text("couldn't load")
@@ -1611,32 +1698,13 @@ private var imageFailureView: some View {
     }
 }
 
+// Rose for me-side image/clip bubbles; white glass for others
 private func chatBubbleFill(isMe: Bool) -> Color {
-    Color(uiColor: UIColor { t in
-        if isMe {
-            return t.userInterfaceStyle == .dark
-                ? UIColor(white: 0.96, alpha: 1)
-                : UIColor(white: 0.10, alpha: 1)
-        } else {
-            return t.userInterfaceStyle == .dark
-                ? UIColor(white: 0.18, alpha: 1)
-                : UIColor(white: 0.84, alpha: 1)
-        }
-    })
+    isMe ? BlipColor.accentNeutral : Color.white.opacity(0.90)
 }
 
 private func chatSecondaryText(isMe: Bool) -> Color {
-    Color(uiColor: UIColor { t in
-        if isMe {
-            return t.userInterfaceStyle == .dark
-                ? UIColor(white: 0.18, alpha: 1)
-                : UIColor(white: 0.82, alpha: 1)
-        } else {
-            return t.userInterfaceStyle == .dark
-                ? UIColor(white: 0.78, alpha: 1)
-                : UIColor(white: 0.30, alpha: 1)
-        }
-    })
+    isMe ? Color.white.opacity(0.80) : BlipColor.textSecondary
 }
 
 private struct ImageGalleryModal: View {

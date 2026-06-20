@@ -4,6 +4,7 @@ enum MessageType: String {
     case text
     case clip
     case image
+    case audio
 }
 
 struct BlipMessage: Identifiable, Hashable {
@@ -20,6 +21,10 @@ struct BlipMessage: Identifiable, Hashable {
     var imageUrls: [URL]
     var caption: String?
     var clipId: String?
+    // Audio fields
+    var audioUrl: URL?
+    var audioDuration: Double?   // seconds
+    var waveform: [Float]        // 30 normalised bars 0-1, stored in RTDB
     var createdAt: Date
     var deleted: Bool
     var deletedBy: String?
@@ -60,6 +65,16 @@ struct BlipMessage: Identifiable, Hashable {
         }
         self.caption = data["caption"] as? String
         self.clipId = data["clipId"] as? String
+        self.audioUrl = (data["audioUrl"] as? String).flatMap(URL.init(string:))
+        self.audioDuration = data["audioDuration"] as? Double
+        // waveform stored as array of NSNumber / Double
+        if let arr = data["waveform"] as? [NSNumber] {
+            self.waveform = arr.map { Float($0.doubleValue) }
+        } else if let arr = data["waveform"] as? [Double] {
+            self.waveform = arr.map(Float.init)
+        } else {
+            self.waveform = []
+        }
         self.createdAt = Date(timeIntervalSince1970: ts / 1000.0)
         self.deleted = data["deleted"] as? Bool ?? false
         self.deletedBy = data["deletedBy"] as? String
