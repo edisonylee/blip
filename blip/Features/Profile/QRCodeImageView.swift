@@ -1,46 +1,51 @@
 import CoreImage
-import CoreImage.CIFilterBuiltins
 import SwiftUI
 
-/// Generates a QR code from `data` and renders it inside a white-background square.
-/// An optional `centerURL` (AsyncImage) is overlaid in the exact center — use "H"
-/// (high) error-correction so 30 % of the code can be obscured by the photo without
-/// losing decodability.
+// MARK: - QR code image view
+
+/// Generates a QR code from `data` and renders it inside a white square.
+/// An optional `centerURL` is overlaid in the exact centre — "H" (high)
+/// error-correction means up to 30 % of modules can be obscured by the photo
+/// without losing decodability.
+///
+/// **Why the background task?**
+/// SwiftUI's `.task` modifier runs on the @MainActor. `CIContext.createCGImage`
+/// is a synchronous, potentially-GPU-bound call that blocks the main thread and
+/// can silently return nil in certain GPU contexts. We dispatch it to a
+/// `Task.detached` (background thread) so the main thread stays responsive and
+/// the CIContext is created off-screen where it is most reliable.
 struct QRCodeImageView: View {
     let data: String
-    /// URL of the image to render in the center (profile photo, etc.). Pass nil to
-    /// show a plain QR code.
+    /// URL of the image to render in the centre (profile photo). Pass nil for
+    /// a plain code.
     var centerURL: URL?
-    /// Diameter of the entire view (QR code is square).
+    /// Diameter of the rendered square.
     var size: CGFloat = 200
-    /// Diameter of the center photo overlay as a fraction of `size`.
     private let centerRatio: CGFloat = 0.22
 
     @State private var qrImage: UIImage?
 
     var body: some View {
         ZStack {
-            // White background so dark QR modules are always readable.
+            // White backing so dark QR modules are always readable.
             Rectangle()
                 .fill(Color.white)
                 .frame(width: size, height: size)
 
             if let qrImage {
                 Image(uiImage: qrImage)
-                    .interpolation(.none)   // keep pixels sharp, never blur
+                    .interpolation(.none) // never blur pixel-art QR modules
                     .resizable()
-                    .scaledToFill()
+                    .scaledToFit()        // fit (not fill) — never clip a module
                     .frame(width: size, height: size)
             }
 
-            // Center photo overlay
+            // Centre photo overlay (only when a URL is provided)
             if let url = centerURL {
                 AsyncImage(url: url) { phase in
                     switch phase {
-                    case .success(let img):
-                        img.resizable().scaledToFill()
-                    default:
-                        Circle().fill(Color(white: 0.85))
+                    case .success(let img): img.resizable().scaledToFill()
+                    default: Circle().fill(Color(white: 0.88))
                     }
                 }
                 .frame(width: size * centerRatio, height: size * centerRatio)
@@ -50,24 +55,51 @@ struct QRCodeImageView: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size * 0.075, style: .continuous))
-        .task(id: data) { qrImage = makeQR() }
+        // Re-generate whenever the encoded string changes.
+        .task(id: data) {
+            // Dispatch to a background thread so CIContext GPU work never
+            // blocks the main actor or silently fails in a main-thread GPU
+            // context.
+            let generated = await Task.detached(priority: .userInitiated) {
+                Self.generateQR(from: data)
+            }.value
+            qrImage = generated
+        }
     }
 
-    private func makeQR() -> UIImage? {
-        let filter = CIFilter.qrCodeGenerator()
-        filter.message = Data(data.utf8)
-        filter.correctionLevel = "H"
+    // MARK: - Generation (static → callable from Task.detached)
+
+    /// Builds a `UIImage` for `string` using CoreImage's QR generator.
+    /// Uses the string-based filter API (more portable than the typed Swift
+    /// overlay) and forces `.up` orientation to prevent the CG→UIKit
+    /// coordinate-flip that causes upside-down codes.
+    private static func generateQR(from string: String) -> UIImage? {
+        guard
+            let filter = CIFilter(name: "CIQRCodeGenerator"),
+            let data = string.data(using: .utf8)
+        else { return nil }
+
+        filter.setValue(data, forKey: "inputMessage")
+        filter.setValue("H", forKey: "inputCorrectionLevel") // high — 30 % recoverable
+
         guard let raw = filter.outputImage else { return nil }
-        // Scale so the output is crisp on @3× screens.
+
+        // Scale up so each module renders as multiple pixels on retina screens.
         let scale: CGFloat = 12
         let scaled = raw.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-        let ctx = CIContext(options: [.useSoftwareRenderer: false])
+
+        // Software renderer avoids GPU-context failures (e.g. on background
+        // threads that don't own a Metal context).
+        let ctx = CIContext(options: [.useSoftwareRenderer: true])
         guard let cg = ctx.createCGImage(scaled, from: scaled.extent) else { return nil }
-        return UIImage(cgImage: cg)
+
+        // Explicit `.up` orientation fixes the CoreImage Y-up ↔ UIKit Y-down
+        // coordinate difference that otherwise flips the QR code vertically.
+        return UIImage(cgImage: cg, scale: 1.0, orientation: .up)
     }
 }
 
-// MARK: - Full-screen expandable wrapper used on the profile page
+// MARK: - Tappable card (profile page)
 
 struct QRCodeCard: View {
     let handle: String
@@ -81,7 +113,7 @@ struct QRCodeCard: View {
         Button { expanded = true } label: {
             VStack(spacing: 14) {
                 QRCodeImageView(data: qrData, centerURL: photoURL, size: 160)
-                    .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 4)
+                    .shadow(color: .black.opacity(0.10), radius: 10, x: 0, y: 4)
 
                 VStack(spacing: 3) {
                     Text("your blip code")
@@ -103,7 +135,7 @@ struct QRCodeCard: View {
     }
 }
 
-// MARK: - Full-screen QR modal
+// MARK: - Full-screen modal
 
 private struct QRFullScreenView: View {
     let handle: String
@@ -133,7 +165,7 @@ private struct QRFullScreenView: View {
 
                 VStack(spacing: 20) {
                     QRCodeImageView(data: qrData, centerURL: photoURL, size: 260)
-                        .shadow(color: .black.opacity(0.22), radius: 16, x: 0, y: 6)
+                        .shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 6)
 
                     VStack(spacing: 4) {
                         Text("@\(handle)")
