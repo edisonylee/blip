@@ -335,168 +335,145 @@ private enum CreationDestination: String, Identifiable {
 // MARK: - Smooth Bottom Bar ──────────────────────────────────────────────────
 //
 // 4 equal columns: [blips] [camera] [requests] [me]
-// The sliding capsule glides between the three navigable tabs (blips/requests/profile).
-// Camera is always a distinct accent circle — excluded from the pill indicator.
 //
-// Pill offset maths (ZStack centre = geo.size.width / 2 = 2·colW):
-//   blips    col-0 centre = 0.5·colW  →  offset = −1.5·colW
-//   camera   col-1 centre = 1.5·colW  →  (no pill)
-//   requests col-2 centre = 2.5·colW  →  offset = +0.5·colW
-//   profile  col-3 centre = 3.5·colW  →  offset = +1.5·colW
+// Visual pattern:
+//   • Every tab always shows its icon (never hidden).
+//   • The ACTIVE tab's label smoothly reveals to the RIGHT of the icon inside
+//     a rounded-rect pill — the expanding pill IS the indicator.
+//   • Corner radius: RoundedRectangle(cornerRadius: 14) — less rounded than a
+//     full Capsule so the pill looks purposeful rather than bubbly.
+//   • Camera is a special accent circle with no pill / no label.
+//   • Requests has a live badge dot for pending invites.
 
 private struct SmoothBottomBar: View {
     @Binding var active: HomeView.Tab
     let onCamera: () -> Void
-    /// Number to display as a badge dot on the requests tab. 0 = hidden.
     let requestBadge: Int
 
     var body: some View {
-        GeometryReader { geo in
-            let colW = geo.size.width / 4
-
-            ZStack(alignment: .center) {
-                // Sliding pill
-                if active != .camera {
-                    Capsule()
-                        .fill(BlipColor.accent.opacity(0.22))
-                        .frame(width: colW * 0.76, height: 42)
-                        .offset(x: pillOffset(colW: colW))
-                        .animation(.spring(response: 0.38, dampingFraction: 0.72), value: active)
-                }
-
-                // Tab row
-                HStack(spacing: 0) {
-                    navTab(tab: .blips,
-                           activeIcon: "play.square.stack.fill",
-                           inactiveIcon: "play.square.stack",
-                           label: "blips",
-                           colW: colW)
-
-                    cameraTab(colW: colW)
-
-                    requestsTab(colW: colW)
-
-                    navTab(tab: .profile,
-                           activeIcon: "person.fill",
-                           inactiveIcon: "person",
-                           label: "me",
-                           colW: colW)
-                }
-            }
+        HStack(spacing: 0) {
+            navTab(tab: .blips,    icon: "play.square.stack", label: "blips")
+            cameraTab
+            requestsTab
+            navTab(tab: .profile,  icon: "person",            label: "me")
         }
+        .frame(maxWidth: .infinity)
         .frame(height: 64)
     }
 
-    // MARK: Pill offset
+    // MARK: - Generic tab — icon always shown, label reveals when active
 
-    private func pillOffset(colW: CGFloat) -> CGFloat {
-        switch active {
-        case .blips:    return -1.5 * colW
-        case .camera:   return -0.5 * colW  // unused (pill hidden for camera)
-        case .requests: return  0.5 * colW
-        case .profile:  return  1.5 * colW
-        }
-    }
-
-    // MARK: Generic nav tab
-
-    private func navTab(
-        tab: HomeView.Tab,
-        activeIcon: String,
-        inactiveIcon: String,
-        label: String,
-        colW: CGFloat
-    ) -> some View {
+    private func navTab(tab: HomeView.Tab, icon: String, label: String) -> some View {
         let on = active == tab
         return Button {
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) { active = tab }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) { active = tab }
         } label: {
-            VStack(spacing: 5) {
-                Image(systemName: on ? activeIcon : inactiveIcon)
-                    .font(.system(size: 20, weight: on ? .bold : .medium))
+            HStack(spacing: 5) {
+                Image(systemName: on ? "\(icon).fill" : icon)
+                    .font(.system(size: 19, weight: on ? .bold : .medium))
                     .foregroundStyle(on ? BlipColor.navForeground : BlipColor.navForegroundInactive)
-                    .scaleEffect(on ? 1.06 : 1.0)
-                    .animation(.spring(response: 0.25, dampingFraction: 0.6), value: on)
 
-                Text(label)
-                    .font(.blip(size: 10, weight: on ? .bold : .medium))
-                    .foregroundStyle(on ? BlipColor.navForeground : BlipColor.navForegroundInactive)
+                // Label smoothly slides in to the right when tab becomes active
+                if on {
+                    Text(label)
+                        .font(.blip(size: 11, weight: .bold))
+                        .foregroundStyle(BlipColor.navForeground)
+                        .fixedSize()
+                        .transition(
+                            .asymmetric(
+                                insertion: .opacity.combined(with: .offset(x: -8)),
+                                removal:   .opacity.combined(with: .offset(x: -8))
+                            )
+                        )
+                }
             }
-            .frame(width: colW)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background {
+                // Pill behind the active tab — reduced corner radius (not Capsule)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(on ? BlipColor.accent.opacity(0.22) : .clear)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 64)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .animation(.spring(response: 0.35, dampingFraction: 0.72), value: on)
     }
 
-    // MARK: Camera tab (accent circle)
+    // MARK: - Camera tab (accent circle — no label, no pill)
 
-    private func cameraTab(colW: CGFloat) -> some View {
+    private var cameraTab: some View {
         Button(action: onCamera) {
-            VStack(spacing: 5) {
-                ZStack {
-                    Circle()
-                        .fill(BlipColor.accentNeutral)
-                        .frame(width: 42, height: 42)
-                        .shadow(color: BlipColor.accentNeutral.opacity(0.4), radius: 8, x: 0, y: 2)
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(BlipColor.accentNeutralOn)
-                }
-                Text("camera")
-                    .font(.blip(size: 10, weight: .medium))
-                    .foregroundStyle(BlipColor.navForegroundInactive)
+            ZStack {
+                Circle()
+                    .fill(BlipColor.accentNeutral)
+                    .frame(width: 40, height: 40)
+                    .shadow(color: BlipColor.accentNeutral.opacity(0.4), radius: 8, x: 0, y: 2)
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(BlipColor.accentNeutralOn)
             }
-            .frame(width: colW)
+            .frame(maxWidth: .infinity)
+            .frame(height: 64)
         }
         .buttonStyle(_ScalePress())
         .accessibilityLabel("open camera")
     }
 
-    // MARK: Requests tab (with live badge dot)
+    // MARK: - Requests tab (bell + badge dot + label reveal)
 
-    private func requestsTab(colW: CGFloat) -> some View {
+    private var requestsTab: some View {
         let on = active == .requests
         return Button {
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) { active = .requests }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) { active = .requests }
         } label: {
-            VStack(spacing: 5) {
+            HStack(spacing: 5) {
+                // Icon + badge in a stable fixed frame so the badge never shifts layout
                 ZStack(alignment: .topTrailing) {
-                    Image(systemName: on ? "bell.badge.fill" : "bell.fill")
-                        .font(.system(size: 20, weight: on ? .bold : .medium))
+                    Image(systemName: on ? "bell.fill" : "bell")
+                        .font(.system(size: 19, weight: on ? .bold : .medium))
                         .foregroundStyle(on ? BlipColor.navForeground : BlipColor.navForegroundInactive)
-                        .scaleEffect(on ? 1.06 : 1.0)
-                        .animation(.spring(response: 0.25, dampingFraction: 0.6), value: on)
 
-                    // Badge dot — shown only when there are pending requests
                     if requestBadge > 0 {
                         ZStack {
-                            Circle()
-                                .fill(BlipColor.error)
-                                .frame(width: 16, height: 16)
-                            if requestBadge < 10 {
-                                Text("\(requestBadge)")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundStyle(.white)
-                            } else {
-                                Text("9+")
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundStyle(.white)
-                            }
+                            Circle().fill(BlipColor.error).frame(width: 14, height: 14)
+                            Text(requestBadge < 10 ? "\(requestBadge)" : "9+")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(.white)
                         }
-                        .offset(x: 8, y: -6)
+                        .offset(x: 9, y: -5)
                         .transition(.scale.combined(with: .opacity))
                     }
                 }
-                .frame(height: 22) // match other icons' visual height
+                .frame(width: 23, height: 22)
 
-                Text("requests")
-                    .font(.blip(size: 10, weight: on ? .bold : .medium))
-                    .foregroundStyle(on ? BlipColor.navForeground : BlipColor.navForegroundInactive)
+                if on {
+                    Text("requests")
+                        .font(.blip(size: 11, weight: .bold))
+                        .foregroundStyle(BlipColor.navForeground)
+                        .fixedSize()
+                        .transition(
+                            .asymmetric(
+                                insertion: .opacity.combined(with: .offset(x: -8)),
+                                removal:   .opacity.combined(with: .offset(x: -8))
+                            )
+                        )
+                }
             }
-            .frame(width: colW)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(on ? BlipColor.accent.opacity(0.22) : .clear)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 64)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .animation(.spring(response: 0.35, dampingFraction: 0.72), value: on)
     }
 }
 
