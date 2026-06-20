@@ -46,7 +46,7 @@ struct QRCodeImageView: View {
             let overlaySize = size * centerRatio
             ZStack {
                 if let url = centerURL {
-                    AsyncImage(url: url) { phase in
+                    CachedAsyncImage(url: url) { phase in
                         switch phase {
                         case .success(let img):
                             img.resizable().scaledToFill()
