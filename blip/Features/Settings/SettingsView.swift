@@ -50,6 +50,14 @@ struct SettingsView: View {
 
                             Divider().background(BlipColor.surfaceElevated)
 
+                            NavigationLink {
+                                PrivacyPolicyView()
+                            } label: {
+                                SettingsRow(title: "privacy policy", tint: BlipColor.textPrimary)
+                            }
+
+                            Divider().background(BlipColor.surfaceElevated)
+
                             Button { auth.signOut() } label: {
                                 SettingsRow(title: "sign out", tint: BlipColor.textPrimary)
                             }

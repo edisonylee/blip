@@ -1,4 +1,5 @@
 import FirebaseFirestore
+import FirebaseFunctions
 import SwiftUI
 
 // MARK: - Model
@@ -22,11 +23,13 @@ final class RequestsViewModel: ObservableObject {
 
     private let db = Firestore.firestore()
     private var listener: ListenerRegistration?
+    private var uid: String = ""
 
     var pendingCount: Int { requests.count }
 
     func startListening(uid: String) {
         listener?.remove()
+        self.uid = uid
         isLoading = true
         listener = db
             .collection("users").document(uid)
@@ -37,10 +40,26 @@ final class RequestsViewModel: ObservableObject {
                     guard let self else { return }
                     self.isLoading = false
                     let docs = snap?.documents ?? []
+
+                    // Auto-accept any direct-add invites before surfacing to UI
+                    for doc in docs {
+                        let d = doc.data()
+                        if d["autoApprove"] as? Bool == true,
+                           let code = d["joinCode"] as? String {
+                            Task { [weak self] in
+                                guard let self else { return }
+                                try? await self.autoJoin(
+                                    blipId: doc.documentID, joinCode: code, uid: uid
+                                )
+                            }
+                        }
+                    }
+
                     self.requests = docs.compactMap { doc -> BlipInviteRequest? in
                         let d = doc.data()
                         guard let name = d["blipName"] as? String,
-                              let code = d["joinCode"]  as? String
+                              let code = d["joinCode"]  as? String,
+                              d["autoApprove"] as? Bool != true  // hide auto-approved ones
                         else { return nil }
                         return BlipInviteRequest(
                             id: doc.documentID,
@@ -53,6 +72,14 @@ final class RequestsViewModel: ObservableObject {
                     .sorted { $0.createdAt > $1.createdAt }
                 }
             }
+    }
+
+    private func autoJoin(blipId: String, joinCode: String, uid: String) async throws {
+        // Join using the embedded join code, then remove the invite doc
+        let functions = Functions.functions(region: "us-central1")
+        _ = try? await functions.httpsCallable("joinBlip").call(["code": joinCode])
+        try? await db.collection("users").document(uid)
+            .collection("blipInvites").document(blipId).delete()
     }
 
     func stopListening() {

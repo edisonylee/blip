@@ -8,22 +8,41 @@ struct RootView: View {
     @EnvironmentObject private var friendsRepo: FriendsRepository
     @EnvironmentObject private var deepLinks: DeepLinkRouter
 
+    // Splash + onboarding flow state
+    @State private var showSplash       = true
+    @State private var showOnboarding   = false
+
     var body: some View {
         Group {
             #if DEBUG
             if ProcessInfo.processInfo.environment["BLIP_CAPTURE_ONLY"] == "1" {
                 CaptureView(blip: Self.debugBlip, onPosted: {})
             } else {
-                authedBody
+                flowBody
             }
             #else
-            authedBody
+            flowBody
             #endif
         }
-        // Default Geist for any Text without an explicit font (SwiftUI inherits
-        // through the environment). Tokens like `BlipTypography.title` or
-        // `Font.blip(...)` still override per call site.
         .environment(\.font, BlipTypography.body)
+    }
+
+    // MARK: - Flow: Splash → Onboarding → Auth routing
+
+    @ViewBuilder
+    private var flowBody: some View {
+        if showSplash {
+            SplashView {
+                showSplash = false
+                if !OnboardingSlides.hasBeenSeen {
+                    showOnboarding = true
+                }
+            }
+        } else if showOnboarding {
+            OnboardingSlides { showOnboarding = false }
+        } else {
+            authedBody
+        }
     }
 
     @ViewBuilder
@@ -34,17 +53,8 @@ struct RootView: View {
         case .signedOut:
             OnboardingView()
         case .signedIn(let uid):
-            // The user-doc listener publishes `users.profile` asynchronously.
-            // Until the first snapshot lands we render a spinner — that's also
-            // why `ensureUserDoc` runs in `.task(id:)` rather than blocking
-            // routing. Once the profile is available we gate on `handle`:
-            // nil/empty → claim screen, populated → Home.
             authedRouting(uid: uid)
                 .task(id: uid) {
-                    // Consume any referrer uid stashed by an invite deep link
-                    // before signup. `ensureUserDoc` only honours it on first
-                    // create; subsequent sign-ins ignore (rules + trigger
-                    // wouldn't let us re-credit anyway).
                     let ref = deepLinks.consumePendingReferrerUid()
                     try? await users.ensureUserDoc(uid: uid, referredByUid: ref)
                     repo.startListening(for: uid)
@@ -72,7 +82,7 @@ struct RootView: View {
         ProgressView()
             .controlSize(.large)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(BlipColor.background)
+            .background(BlipColor.backgroundGradient.ignoresSafeArea())
     }
 
     #if DEBUG

@@ -47,6 +47,47 @@ final class BlipInviteService: ObservableObject {
 
     /// Writes a pending invite document to the invitee's subcollection.
     /// Rejects self-invites, blip-full invites, and already-members.
+    /// Direct-add variant used from the group scanner.
+    /// Writes an invite with `autoApprove: true` so `RequestsViewModel`
+    /// accepts it automatically on the invitee's next active session —
+    /// no tap required on their end.
+    func sendDirectAdd(
+        handle: String,
+        blip: Blip,
+        inviterUid: String,
+        inviterHandle: String?
+    ) async throws {
+        isSending = true
+        errorMessage = nil
+        sentToHandle = nil
+        defer { isSending = false }
+
+        let (inviteeUid, normalized) = try await resolveHandle(handle)
+        guard inviteeUid != inviterUid else { throw InviteError.cannotInviteSelf }
+        guard !blip.members.contains(inviteeUid) else { throw InviteError.alreadyMember }
+        guard blip.members.count < blip.size else { throw InviteError.blipFull }
+
+        let payload: [String: Any] = [
+            "blipId":       blip.id,
+            "blipName":     blip.name,
+            "joinCode":     blip.joinCode,
+            "inviterUid":   inviterUid,
+            "inviterHandle": inviterHandle as Any,
+            "createdAt":    FieldValue.serverTimestamp(),
+            "status":       "pending",
+            "autoApprove":  true,   // ← skip the accept tap
+        ]
+
+        try await db.collection("users")
+            .document(inviteeUid)
+            .collection("blipInvites")
+            .document(blip.id)
+            .setData(payload)
+
+        sentToHandle = normalized
+        log.info("direct-add sent to=@\(normalized, privacy: .public) blip=\(blip.id, privacy: .public)")
+    }
+
     func sendInvite(
         handle: String,
         blip: Blip,
