@@ -31,8 +31,12 @@ private struct FriendsContent: View {
     @ObservedObject private var friendsRepo: FriendsRepository
     @State private var searchText = ""
 
+    // Stored so requestsSection can call accept / reject directly
+    private let friendsService: any FriendMutating
+
     init(currentUid: String?, friendsService: any FriendMutating, friendsRepo: FriendsRepository) {
         self.currentUid = currentUid
+        self.friendsService = friendsService
         _vm = StateObject(wrappedValue: UserBrowserViewModel(friendsService: friendsService))
         self.friendsRepo = friendsRepo
     }
@@ -261,9 +265,7 @@ private struct FriendsContent: View {
 
     // MARK: - Card state
 
-    private enum CardState { case addable, pending, friends }
-
-    private func cardState(for user: BlipUser) -> CardState {
+    private func cardState(for user: BlipUser) -> UserCardState {
         if friendsRepo.friends.contains(user.id) { return .friends }
         if friendsRepo.outgoingRequests.contains(where: { $0.toUid == user.id }) { return .pending }
         if vm.justSentUids.contains(user.id) { return .pending }
@@ -271,14 +273,16 @@ private struct FriendsContent: View {
     }
 }
 
+// MARK: - Shared card-state enum (file-scoped so both FriendsContent and UserBrowseCard use the same type)
+
+private enum UserCardState { case addable, pending, friends }
+
 // MARK: - User browse card
 
 private struct UserBrowseCard: View {
     let user: BlipUser
-    let state: _State
+    let state: UserCardState
     let onAdd: () -> Void
-
-    enum _State { case addable, pending, friends }
 
     var body: some View {
         HStack(spacing: 12) {
