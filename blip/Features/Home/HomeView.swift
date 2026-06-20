@@ -8,6 +8,8 @@ struct HomeView: View {
 
     @StateObject private var vm = HomeViewModel()
     @StateObject private var clipUploader = ClipUploader()
+    @StateObject private var requestsVM = RequestsViewModel()
+
     @State private var showPlusMenu = false
     @State private var creationDestination: CreationDestination?
     @State private var path = NavigationPath()
@@ -15,38 +17,74 @@ struct HomeView: View {
     @State private var showGlobalCapture = false
     @State private var showReferralShare = false
     @State private var activeTab: Tab = .blips
+    @State private var didOpenCameraOnLaunch = false
 
-    enum Tab { case camera, blips, profile }
+    // 4 navigable tabs — camera is the central raised button, not a tab page
+    enum Tab { case blips, requests, friends, profile }
 
     var body: some View {
         NavigationStack(path: $path) {
             ZStack {
-                BlipColor.background.ignoresSafeArea()
+                BlipColor.backgroundGradient.ignoresSafeArea()
 
-                // ── Main layout ──────────────────────────────────────────
                 VStack(spacing: 0) {
                     TabView(selection: $activeTab) {
-                        blipsPage.tag(Tab.blips)
-                        ProfileView().tag(Tab.profile)
+                        blipsPage        .tag(Tab.blips)
+                        RequestsView(vm: requestsVM).tag(Tab.requests)
+                        FriendsView()    .tag(Tab.friends)
+                        ProfileView()    .tag(Tab.profile)
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
 
-                    // Full-width smooth bar (no FAB inside)
+                    // 4-tab bar (NO camera inside — camera floats above as overlay)
                     smoothBar
                 }
 
-                // ── Plus FAB — floats ABOVE the bar, centered ────────────
+                // Camera bubble — half above bar, half inside.
+                // Bar height = 64 pt.  Camera radius = 28 pt.
+                // We want the camera CENTRE at the bar top edge, so
+                //   camera bottom = 64 − 28 = 36 pt above safe-area bottom.
                 VStack(spacing: 0) {
                     Spacer()
-                    if activeTab == .blips {
-                        plusFAB
-                            .padding(.bottom, 76) // sits ~12pt above the 64pt bar
-                            .transition(.scale(scale: 0.75).combined(with: .opacity))
+                    Button(action: handleCameraTab) {
+                        ZStack {
+                            // Thin ring acts as a visual separator between the
+                            // content area above and the dark bar below.
+                            Circle()
+                                .stroke(BlipColor.backgroundGradient, lineWidth: 3)
+                                .frame(width: 62, height: 62)
+                            Circle()
+                                .fill(BlipColor.accentNeutral)
+                                .frame(width: 56, height: 56)
+                                .shadow(color: BlipColor.accentNeutral.opacity(0.45),
+                                        radius: 14, x: 0, y: -5)
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundStyle(BlipColor.accentNeutralOn)
+                        }
+                    }
+                    .buttonStyle(_ScalePress())
+                    .accessibilityLabel("open camera")
+                    // 36 pt from safe-area bottom → camera centre at bar top edge
+                    .padding(.bottom, 24)
+                }
+
+                // Plus FAB — bottom-right corner, above bar
+                VStack(spacing: 0) {
+                    Spacer()
+                    HStack(spacing: 0) {
+                        Spacer()
+                        if activeTab == .blips || activeTab == .requests {
+                            plusFAB
+                                .padding(.trailing, 20)
+                                .padding(.bottom, 64)
+                                .transition(.scale(scale: 0.75).combined(with: .opacity))
+                        }
                     }
                 }
                 .animation(.spring(response: 0.3, dampingFraction: 0.75), value: activeTab)
 
-                // ── Plus popover ─────────────────────────────────────────
+                // Plus popover — right-aligned
                 if showPlusMenu {
                     Color.black.opacity(0.001)
                         .ignoresSafeArea()
@@ -57,23 +95,23 @@ struct HomeView: View {
                         }
                     VStack(spacing: 0) {
                         Spacer()
-                        PlusPopover(
-                            onCreate: { showPlusMenu = false; creationDestination = .create },
-                            onJoin:   { showPlusMenu = false; creationDestination = .join },
-                            onDismiss: {
-                                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                                    showPlusMenu = false
-                                }
-                            },
-                            canCreate: canCreateBlip,
-                            referralsToNextSlot: users.profile?.referralsToNextSlot ?? 4,
-                            onLockedTap: { showPlusMenu = false; showReferralShare = true }
-                        )
-                        .padding(.horizontal, 20)
-                        // 158 pt keeps the popover clearly above the FAB (top at ≈128 pt)
-                        .padding(.bottom, 158)
+                        HStack(spacing: 0) {
+                            Spacer()
+                            PlusPopover(
+                                onCreate: { showPlusMenu = false; creationDestination = .create },
+                                onJoin:   { showPlusMenu = false; creationDestination = .join },
+                                onDismiss: {
+                                    withAnimation(.spring(response: 0.25)) { showPlusMenu = false }
+                                },
+                                canCreate: canCreateBlip,
+                                referralsToNextSlot: users.profile?.referralsToNextSlot ?? 4,
+                                onLockedTap: { showPlusMenu = false; showReferralShare = true }
+                            )
+                            .padding(.trailing, 20)
+                            .padding(.bottom, 146)
+                        }
                     }
-                    .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .bottom)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .bottomTrailing)))
                     .animation(.spring(response: 0.28, dampingFraction: 0.82), value: showPlusMenu)
                 }
 
@@ -82,9 +120,7 @@ struct HomeView: View {
                 #endif
             }
             .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(for: Blip.self) { blip in
-                BlipDetailView(blip: blip)
-            }
+            .navigationDestination(for: Blip.self) { blip in BlipDetailView(blip: blip) }
             .sheet(item: $creationDestination) { dest in
                 switch dest {
                 case .create: CreateBlipView()
@@ -101,20 +137,30 @@ struct HomeView: View {
             }
             .fullScreenCover(isPresented: $showGlobalCapture) {
                 if case .signedIn(let uid) = auth.state {
-                    CaptureGlobalView(
-                        uid: uid,
-                        uploader: clipUploader,
-                        onSent: { showGlobalCapture = false }
-                    )
-                    .environmentObject(repo)
+                    CaptureGlobalView(uid: uid, uploader: clipUploader,
+                                      onSent: { showGlobalCapture = false })
+                        .environmentObject(repo)
                 }
             }
         }
         .onChange(of: deepLinks.pending) { _, action in handle(action) }
-        .onAppear { handle(deepLinks.pending) }
+        .onAppear {
+            handle(deepLinks.pending)
+            if let uid = currentUid { requestsVM.startListening(uid: uid) }
+            // Open camera on first home-screen appear (camera is the default action)
+            if !didOpenCameraOnLaunch {
+                didOpenCameraOnLaunch = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    showGlobalCapture = true
+                }
+            }
+        }
+        .onChange(of: currentUid) { _, uid in
+            if let uid { requestsVM.startListening(uid: uid) }
+        }
     }
 
-    // MARK: - Plus FAB (outside the bar)
+    // MARK: - Plus FAB
 
     private var plusFAB: some View {
         Button {
@@ -126,7 +172,7 @@ struct HomeView: View {
                 Circle()
                     .fill(BlipColor.accentNeutral)
                     .frame(width: 52, height: 52)
-                    .shadow(color: .black.opacity(0.28), radius: 16, x: 0, y: 6)
+                    .shadow(color: BlipColor.accentNeutral.opacity(0.45), radius: 16, x: 0, y: 6)
                 Image(systemName: "plus")
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(BlipColor.accentNeutralOn)
@@ -136,18 +182,19 @@ struct HomeView: View {
         .accessibilityLabel("create or join a blip")
     }
 
-    // MARK: - Smooth bar container (separator + SmoothBottomBar)
+    // MARK: - Smooth bar (raised camera bubble)
 
     private var smoothBar: some View {
         VStack(spacing: 0) {
             Rectangle()
-                .fill(BlipColor.border)
+                .fill(BlipColor.navBackground.opacity(0.2))
                 .frame(height: 0.5)
-            SmoothBottomBar(active: $activeTab, onCamera: handleCameraTab)
+            SmoothBottomBar(
+                active: $activeTab,
+                requestBadge: requestsVM.pendingCount
+            )
         }
-        .background {
-            BlipColor.surface.ignoresSafeArea(edges: .bottom)
-        }
+        .background { BlipColor.navBackground.ignoresSafeArea(edges: .bottom) }
     }
 
     // MARK: - Blips page
@@ -155,7 +202,7 @@ struct HomeView: View {
     @ViewBuilder
     private var blipsPage: some View {
         if repo.isLoading && repo.blips.isEmpty {
-            VStack { Spacer(); ProgressView().tint(BlipColor.textPrimary); Spacer() }
+            VStack { Spacer(); ProgressView().tint(BlipColor.accent); Spacer() }
         } else if repo.blips.isEmpty {
             emptyState
         } else {
@@ -177,9 +224,10 @@ struct HomeView: View {
             Button { } label: {
                 Image(systemName: "bell")
                     .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(BlipColor.textPrimary)
+                    .foregroundStyle(BlipColor.textSecondary)
                     .frame(width: 40, height: 40)
-                    .background(BlipColor.surface, in: Circle())
+                    .background(BlipColor.surface.opacity(0.8), in: Circle())
+                    .shadow(color: BlipColor.accent.opacity(0.12), radius: 6, x: 0, y: 2)
             }
         }
         .padding(.horizontal, 20)
@@ -194,11 +242,9 @@ struct HomeView: View {
                 LazyVStack(spacing: 14) {
                     ForEach(repo.blips) { blip in
                         NavigationLink(value: blip) {
-                            BlipCard(
-                                title: blip.name,
-                                cardColor: vm.cardColor(for: blip),
-                                members: vm.cardMembers(for: blip)
-                            )
+                            BlipCard(title: blip.name,
+                                     cardColor: vm.cardColor(for: blip),
+                                     members: vm.cardMembers(for: blip))
                         }
                         .buttonStyle(.plain)
                     }
@@ -247,7 +293,7 @@ struct HomeView: View {
             HStack {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text("uid \(currentUid.prefix(6))")
+                    Text("uid \(currentUid?.prefix(6) ?? "—")")
                     Text("blips \(repo.blips.count)")
                     if let err = repo.lastError {
                         Text(err).foregroundStyle(BlipColor.error).lineLimit(2)
@@ -257,14 +303,13 @@ struct HomeView: View {
                 .foregroundStyle(BlipColor.textTertiary.opacity(0.6))
                 .padding(6)
                 .background(BlipColor.surface.opacity(0.7), in: RoundedRectangle(cornerRadius: 6))
-                .padding(.trailing, 8)
-                .padding(.top, 4)
+                .padding(.trailing, 8).padding(.top, 4)
             }
             Spacer()
         }
     }
 
-    // MARK: - Deep link
+    // MARK: - Deep link + helpers
 
     private func handle(_ action: DeepLinkRouter.Action?) {
         guard let action else { return }
@@ -276,30 +321,26 @@ struct HomeView: View {
                 path = NavigationPath([blip])
             }
         case .invite(let referrerUid):
-            if case .signedIn(let me) = auth.state, me != referrerUid {
+            if let me = currentUid, me != referrerUid {
                 Task { try? await users.claimReferral(referrerUid) }
             }
         }
         deepLinks.consume()
     }
 
-    private var currentUid: String { vm.currentUid(from: auth.state) }
-
-    // MARK: - Referral gate
+    private var currentUid: String? {
+        if case .signedIn(let uid) = auth.state { return uid }
+        return nil
+    }
 
     private var canCreateBlip: Bool {
-        guard case .signedIn(let me) = auth.state else { return false }
+        guard let me = currentUid else { return false }
         let unlocked = users.profile?.unlockedBlipSlots ?? 1
-        let createdCount = repo.blips.filter { $0.ownerUid == me }.count
-        return createdCount < unlocked
+        return repo.blips.filter { $0.ownerUid == me }.count < unlocked
     }
 
     private var referralShareText: String {
-        let uid: String? = {
-            if case .signedIn(let id) = auth.state { return id }
-            return nil
-        }()
-        if let url = InviteShare.inviteURL(referrerUid: uid) {
+        if let url = InviteShare.inviteURL(referrerUid: currentUid) {
             return "on blip with me — \(url.absoluteString)"
         }
         return "on blip with me"
@@ -311,127 +352,89 @@ private enum CreationDestination: String, Identifiable {
     var id: String { rawValue }
 }
 
-// MARK: - Smooth Bottom Bar ──────────────────────────────────────────────────
+// MARK: - Smooth Bottom Bar ─────────────────────────────────────────────────
 //
-// Replicates the Android SmoothBottomBar sliding-indicator concept in SwiftUI:
-// a spring-animated capsule glides along the bar to the active tab, while
-// icon + label crossfade between filled/bold (active) and ghost/medium (inactive).
-//
-// Layout: three equal columns — [blips] [camera] [me].
-// The sliding capsule only shows for blips/profile (camera is a white circle).
+// 4 equal tabs: [blips] [requests] [gap] [friends] [me]
+// The transparent centre gap (68 pt) reserves visual space for the camera
+// bubble that floats ABOVE the bar as a separate ZStack overlay in HomeView.
+// Each tab shows its icon always; the active tab's label slides in to the
+// right inside a RoundedRectangle pill (cornerRadius 14).
 
 private struct SmoothBottomBar: View {
     @Binding var active: HomeView.Tab
-    let onCamera: () -> Void
+    let requestBadge: Int
+
+    // Camera bubble diameter used only to size the centre gap
+    private let camD: CGFloat = 56
 
     var body: some View {
-        GeometryReader { geo in
-            let colW = geo.size.width / 3
-
-            ZStack(alignment: .center) {
-                // ── Sliding pill indicator ───────────────────────────────
-                // Moves between column centers via .offset; spring gives the
-                // "smooth glide" that defines this bar style.
-                if active != .camera {
-                    Capsule()
-                        .fill(Color.white.opacity(0.11))
-                        .frame(width: colW * 0.72, height: 42)
-                        .offset(x: pillOffset(colW: colW))
-                        .animation(
-                            .spring(response: 0.38, dampingFraction: 0.72),
-                            value: active
-                        )
-                }
-
-                // ── Icon + label row ─────────────────────────────────────
-                HStack(spacing: 0) {
-                    navTab(
-                        tab: .blips,
-                        activeIcon: "play.square.stack.fill",
-                        inactiveIcon: "play.square.stack",
-                        label: "blips",
-                        colW: colW
-                    )
-                    cameraTab(colW: colW)
-                    navTab(
-                        tab: .profile,
-                        activeIcon: "person.fill",
-                        inactiveIcon: "person",
-                        label: "me",
-                        colW: colW
-                    )
-                }
-            }
+        HStack(spacing: 0) {
+            navTab(.blips,    "play.square.stack", "blips")
+            navTab(.requests, "bell",              "inbox",  badge: requestBadge)
+            // Transparent gap where the camera button floats above
+            Color.clear.frame(width: camD + 12)
+            navTab(.friends,  "person.2",          "friends")
+            navTab(.profile,  "person",             "me")
         }
-        .frame(height: 64)
+        .frame(maxWidth: .infinity)
+        .frame(height: 52)
     }
 
-    // Column-center offset from the ZStack mid-point.
-    // Column 0 → −colW, Column 1 → 0, Column 2 → +colW
-    private func pillOffset(colW: CGFloat) -> CGFloat {
-        switch active {
-        case .blips:   return -colW
-        case .camera:  return 0
-        case .profile: return  colW
-        }
-    }
-
-    // MARK: Nav tab item
+    // MARK: Nav tab (icon always visible, label reveals on active)
 
     private func navTab(
-        tab: HomeView.Tab,
-        activeIcon: String,
-        inactiveIcon: String,
-        label: String,
-        colW: CGFloat
+        _ tab: HomeView.Tab, _ icon: String, _ label: String, badge: Int = 0
     ) -> some View {
         let on = active == tab
         return Button {
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.72)) { active = tab }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) { active = tab }
         } label: {
-            VStack(spacing: 5) {
-                Image(systemName: on ? activeIcon : inactiveIcon)
-                    .font(.system(size: 21, weight: on ? .bold : .medium))
-                    .foregroundStyle(on ? Color.white : Color.white.opacity(0.36))
-                    .scaleEffect(on ? 1.06 : 1.0)
-                    .animation(.spring(response: 0.25, dampingFraction: 0.6), value: on)
+            HStack(spacing: 5) {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: on ? "\(icon).fill" : icon)
+                        .font(.system(size: 19, weight: on ? .bold : .medium))
+                        .foregroundStyle(on ? BlipColor.navForeground
+                                            : BlipColor.navForegroundInactive)
+                    if badge > 0 {
+                        ZStack {
+                            Circle().fill(BlipColor.error).frame(width: 14, height: 14)
+                            Text(badge < 10 ? "\(badge)" : "9+")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                        .offset(x: 9, y: -5)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .frame(width: 22, height: 22)
 
-                Text(label)
-                    .font(.blip(size: 10, weight: on ? .bold : .medium))
-                    .foregroundStyle(on ? Color.white : Color.white.opacity(0.36))
+                if on {
+                    Text(label)
+                        .font(.blip(size: 11, weight: .bold))
+                        .foregroundStyle(BlipColor.navForeground)
+                        .fixedSize()
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .offset(x: -8)),
+                            removal:   .opacity.combined(with: .offset(x: -8))
+                        ))
+                }
             }
-            .frame(width: colW)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(on ? BlipColor.navPill : .clear)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-    }
-
-    // MARK: Camera tab (white circle — not part of the indicator system)
-
-    private func cameraTab(colW: CGFloat) -> some View {
-        Button(action: onCamera) {
-            VStack(spacing: 5) {
-                ZStack {
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: 44, height: 44)
-                        .shadow(color: .white.opacity(0.14), radius: 8, x: 0, y: 2)
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(Color.black)
-                }
-                Text("camera")
-                    .font(.blip(size: 10, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.36))
-            }
-            .frame(width: colW)
-        }
-        .buttonStyle(_ScalePress())
-        .accessibilityLabel("open camera")
+        .animation(.spring(response: 0.35, dampingFraction: 0.72), value: on)
     }
 }
 
-// MARK: - Shared press style
+// MARK: - Press style
 
 private struct _ScalePress: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {

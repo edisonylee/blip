@@ -16,9 +16,11 @@ import SwiftUI
 /// the CIContext is created off-screen where it is most reliable.
 struct QRCodeImageView: View {
     let data: String
-    /// URL of the image to render in the centre (profile photo). Pass nil for
-    /// a plain code.
+    /// URL of the image to render in the centre (profile photo).
     var centerURL: URL?
+    /// Fallback initials shown when `centerURL` is nil or fails to load.
+    /// Pass the first 1-2 letters of the user's handle.
+    var centerInitials: String? = nil
     /// Diameter of the rendered square.
     var size: CGFloat = 200
     private let centerRatio: CGFloat = 0.22
@@ -40,18 +42,28 @@ struct QRCodeImageView: View {
                     .frame(width: size, height: size)
             }
 
-            // Centre photo overlay (only when a URL is provided)
-            if let url = centerURL {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let img): img.resizable().scaledToFill()
-                    default: Circle().fill(Color(white: 0.88))
+            // Centre overlay — photo if available, otherwise initials gradient circle
+            let overlaySize = size * centerRatio
+            ZStack {
+                if let url = centerURL {
+                    CachedAsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img):
+                            img.resizable().scaledToFill()
+                        default:
+                            // Image loading or failed — show initials as fallback
+                            initialsCircle(diameter: overlaySize)
+                        }
                     }
+                } else {
+                    // No URL at all — always show initials
+                    initialsCircle(diameter: overlaySize)
                 }
-                .frame(width: size * centerRatio, height: size * centerRatio)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(Color.white, lineWidth: 3))
             }
+            .frame(width: overlaySize, height: overlaySize)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(Color.white, lineWidth: 3))
+            .shadow(color: .black.opacity(0.12), radius: 4, x: 0, y: 2)
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size * 0.075, style: .continuous))
@@ -64,6 +76,30 @@ struct QRCodeImageView: View {
                 Self.generateQR(from: data)
             }.value
             qrImage = generated
+        }
+    }
+
+    // MARK: - Initials circle (shown when no photo)
+
+    /// Gradient circle with the user's initials — used as the QR centre overlay
+    /// when no profile photo is available.
+    @ViewBuilder
+    private func initialsCircle(diameter: CGFloat) -> some View {
+        ZStack {
+            // Rose-to-lavender gradient matching the app accent
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: 0xFCA5A5), Color(hex: 0xF43F5E)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            if let letters = centerInitials, !letters.isEmpty {
+                Text(letters)
+                    .font(.system(size: diameter * 0.40, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+            }
         }
     }
 
@@ -108,11 +144,12 @@ struct QRCodeCard: View {
     @State private var expanded = false
 
     private var qrData: String { "blip://user/\(handle)" }
+    private var initials: String { QRCodeCard.initials(from: handle) }
 
     var body: some View {
         Button { expanded = true } label: {
             VStack(spacing: 14) {
-                QRCodeImageView(data: qrData, centerURL: photoURL, size: 160)
+                QRCodeImageView(data: qrData, centerURL: photoURL, centerInitials: initials, size: 160)
                     .shadow(color: .black.opacity(0.10), radius: 10, x: 0, y: 4)
 
                 VStack(spacing: 3) {
@@ -130,8 +167,26 @@ struct QRCodeCard: View {
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $expanded) {
-            QRFullScreenView(handle: handle, photoURL: photoURL)
+            QRFullScreenView(handle: handle, photoURL: photoURL, initials: initials)
         }
+    }
+
+    // MARK: - Initials helper (shared with QRFullScreenView)
+
+    /// Derives 1–2 uppercase initials from a handle.
+    /// Splits on `_` and `.` to handle "john_doe" → "JD"; single-word
+    /// handles like "johndoe" use the first two letters → "JO".
+    static func initials(from handle: String) -> String {
+        let segments = handle
+            .components(separatedBy: CharacterSet(charactersIn: "_."))
+            .map { $0.filter(\.isLetter) }
+            .filter { !$0.isEmpty }
+        if segments.count >= 2 {
+            return segments.prefix(2)
+                .compactMap { $0.first.map { String($0).uppercased() } }
+                .joined()
+        }
+        return String(handle.filter(\.isLetter).prefix(2)).uppercased()
     }
 }
 
@@ -140,6 +195,7 @@ struct QRCodeCard: View {
 private struct QRFullScreenView: View {
     let handle: String
     let photoURL: URL?
+    let initials: String
     @Environment(\.dismiss) private var dismiss
 
     private var qrData: String { "blip://user/\(handle)" }
@@ -164,7 +220,7 @@ private struct QRFullScreenView: View {
                 Spacer()
 
                 VStack(spacing: 20) {
-                    QRCodeImageView(data: qrData, centerURL: photoURL, size: 260)
+                    QRCodeImageView(data: qrData, centerURL: photoURL, centerInitials: initials, size: 260)
                         .shadow(color: .black.opacity(0.14), radius: 16, x: 0, y: 6)
 
                     VStack(spacing: 4) {

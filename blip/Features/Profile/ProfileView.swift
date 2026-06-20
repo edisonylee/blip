@@ -69,7 +69,7 @@ private struct ProfileContent: View {
 
     var body: some View {
         ZStack {
-            BlipColor.background.ignoresSafeArea()
+            BlipColor.backgroundGradient.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 topBar
@@ -239,8 +239,11 @@ private struct ProfileContent: View {
     private var hasHandle: Bool { !(profile?.handle ?? "").isEmpty }
 
     private var avatarInitials: String {
-        if let h = profile?.handle, let c = h.first { return String(c).uppercased() }
-        return "?"
+        guard let h = profile?.handle, !h.isEmpty else { return "?" }
+        // Reuse the same logic as QRCodeCard.initials(from:) for consistency:
+        // split on _ and . to get word initials ("john_doe" → "JD"),
+        // or take the first two letters of single-word handles ("johndoe" → "JO").
+        return QRCodeCard.initials(from: h)
     }
 
     private var handleDisplay: String {

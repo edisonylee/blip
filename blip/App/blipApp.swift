@@ -12,6 +12,12 @@ private let appLog = Logger(subsystem: "app.blip.ios", category: "App")
 struct blipApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var auth = AuthService()
+
+    init() {
+        // Configure a large URLCache so CachedAsyncImage never re-downloads
+        // the same profile photo or thumbnail during a session.
+        CachedAsyncImage.configureSharedCache()
+    }
     @StateObject private var repo = BlipRepository()
     @StateObject private var moderation = ModerationService()
     @StateObject private var users = UserRepository()
@@ -33,7 +39,8 @@ struct blipApp: App {
                 .environmentObject(userDirectory)
                 .environmentObject(deepLinks)
                 .environmentObject(theme)
-                .preferredColorScheme(theme.preference.colorScheme)
+                // Theme branch: light-only pastel UI — dark mode removed.
+                .preferredColorScheme(.light)
                 .onAppear {
                     appDelegate.users = users
                     appDelegate.deepLinks = deepLinks

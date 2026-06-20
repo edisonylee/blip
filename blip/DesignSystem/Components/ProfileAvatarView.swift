@@ -43,7 +43,7 @@ struct ProfileAvatarView: View {
             Circle().fill(BlipColor.surfaceElevated)
 
             if let photoURL {
-                AsyncImage(url: photoURL) { phase in
+                CachedAsyncImage(url: photoURL) { phase in
                     switch phase {
                     case .success(let image):
                         image.resizable().scaledToFill()

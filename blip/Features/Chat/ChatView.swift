@@ -1483,7 +1483,7 @@ private struct RemoteImageGrid: View {
 
     var body: some View {
         ImageGridShell(count: urls.count) { index in
-            AsyncImage(url: urls[index]) { phase in
+            CachedAsyncImage(url: urls[index]) { phase in
                 switch phase {
                 case .success(let img):
                     img.resizable().scaledToFill()
@@ -1649,7 +1649,7 @@ private struct ImageGalleryModal: View {
             BlipColor.mediaBackdrop.ignoresSafeArea()
             TabView(selection: $currentIndex) {
                 ForEach(Array(urls.enumerated()), id: \.offset) { index, url in
-                    AsyncImage(url: url) { phase in
+                    CachedAsyncImage(url: url) { phase in
                         switch phase {
                         case .success(let image):
                             image.resizable().scaledToFit()
@@ -1726,7 +1726,7 @@ private struct ClipMessageCard: View {
 
     @ViewBuilder private var thumbnailView: some View {
         if let url = message.thumbnailUrl {
-            AsyncImage(url: url) { phase in
+            CachedAsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let img): img.resizable().scaledToFill().overlay(playOverlay)
                 default: placeholderThumb
