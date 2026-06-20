@@ -1397,7 +1397,7 @@ private struct TailedBubble<Content: View>: View {
     }
 }
 
-private struct BubbleShape: Shape {
+struct BubbleShape: Shape {
     var myMessage: Bool
 
     func path(in rect: CGRect) -> Path {
