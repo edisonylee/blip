@@ -69,7 +69,9 @@ final class ProfilePhotoUploader: ProfilePhotoUploading {
 
     /// Aspect-fit downscale to `maxEdge` on the longer side. No-op when the
     /// image is already small enough. UIKit's `draw(in:)` handles orientation.
-    private static func resize(_ image: UIImage, maxEdge: CGFloat) -> UIImage {
+    // nonisolated so Task.detached can call it without 'await'.
+    // The method only does pure image math — no actor-isolated state touched.
+    nonisolated private static func resize(_ image: UIImage, maxEdge: CGFloat) -> UIImage {
         let size = image.size
         let longest = max(size.width, size.height)
         guard longest > maxEdge else { return image }
