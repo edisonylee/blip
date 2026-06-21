@@ -1,4 +1,3 @@
-import PhotosUI
 import SwiftUI
 
 // MARK: - Shell
@@ -42,7 +41,7 @@ private struct ProfileContent: View {
 
     // MARK: - Sheet / navigation state
 
-    @State private var showHandleSheet    = false
+    @State private var showEditProfile    = false   // combined photo + handle sheet
     @State private var showShareSheet     = false
     @State private var showQR             = false
     @State private var showQuietHours     = false
@@ -50,7 +49,6 @@ private struct ProfileContent: View {
     @State private var showDeleteConfirm  = false
     @State private var isDeleting         = false
     @State private var deleteError: String?
-    @State private var pickerItem: PhotosPickerItem?
 
     private let uid: String
 
@@ -91,7 +89,7 @@ private struct ProfileContent: View {
                         menuRow(
                             icon: "pencil", iconTint: BlipColor.accentNeutral,
                             title: "edit profile"
-                        ) { showHandleSheet = true }
+                        ) { showEditProfile = true }
 
                         menuDivider
 
@@ -174,17 +172,20 @@ private struct ProfileContent: View {
         }
         .task { rankVM.startListening() }
         .onDisappear { rankVM.stopListening() }
-        .sheet(isPresented: $showHandleSheet)   { EditHandleSheet() }
-        .sheet(isPresented: $showShareSheet)    {
+        .sheet(isPresented: $showEditProfile) { EditProfileSheet(uid: uid) }
+        .sheet(isPresented: $showShareSheet)  {
             ShareSheet(activityItems: vm.shareItems(handle: profile?.handle))
         }
+        // QR bottom sheet — medium detent so it rises from the bottom
         .sheet(isPresented: $showQR) {
             if let handle = profile?.handle, !handle.isEmpty {
-                QRFullScreenView(
+                ProfileQRBottomSheet(
                     handle: handle,
-                    photoURL: profile?.photoURL,
-                    initials: QRCodeCard.initials(from: handle)
+                    photoURL: profile?.photoURL
                 )
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(BlipColor.backgroundGradient)
             }
         }
         .sheet(isPresented: $showQuietHours) {
@@ -208,45 +209,28 @@ private struct ProfileContent: View {
         } message: {
             Text("this permanently removes your account, all your clips, and your membership in every blip. it can't be undone.")
         }
-        .onChange(of: pickerItem) { _, newItem in
-            guard let newItem else { return }
-            Task {
-                if let data = try? await newItem.loadTransferable(type: Data.self),
-                   let image = UIImage(data: data) {
-                    await vm.uploadPhoto(image)
-                }
-                pickerItem = nil
-            }
-        }
+        // pickerItem removed — photo upload now lives in EditProfileSheet
     }
 
     // MARK: - Identity section (avatar + handle + date)
 
     private var identitySection: some View {
         VStack(spacing: 14) {
-            // Avatar — tap to change photo
-            PhotosPicker(selection: $pickerItem, matching: .images, photoLibrary: .shared()) {
-                ZStack {
-                    ProfileAvatarView(
-                        photoURL: profile?.photoURL,
-                        initials: avatarInitials,
-                        size: 96,
-                        isEditable: true
-                    )
-                    if vm.isUploadingPhoto {
-                        Circle()
-                            .fill(BlipColor.background.opacity(0.55))
-                            .frame(width: 96, height: 96)
-                        ProgressView().tint(BlipColor.accentNeutral)
-                    }
-                }
+            // Avatar — tap to show QR code bottom sheet
+            Button { showQR = true } label: {
+                ProfileAvatarView(
+                    photoURL: profile?.photoURL,
+                    initials: avatarInitials,
+                    size: 96,
+                    isEditable: true,
+                    badgeIcon: "qrcode"   // shows QR icon badge instead of camera
+                )
             }
             .buttonStyle(.plain)
-            .disabled(vm.isUploadingPhoto)
-            .accessibilityLabel("change profile photo")
+            .accessibilityLabel("show my QR code")
 
-            // Handle (tap to edit)
-            Button { showHandleSheet = true } label: {
+            // Handle — tap opens edit profile sheet
+            Button { showEditProfile = true } label: {
                 Text(handleDisplay)
                     .font(.blip(size: 22, weight: .bold))
                     .foregroundStyle(hasHandle ? BlipColor.textPrimary : BlipColor.textTertiary)
@@ -436,6 +420,46 @@ private struct ProfileContent: View {
         let s = profile?.quietHoursStart ?? 23
         let e = profile?.quietHoursEnd   ?? 7
         return "\(formatHour(s)) – \(formatHour(e))"
+    }
+}
+
+// MARK: - QR bottom sheet (compact, medium detent)
+
+/// Compact bottom sheet presented when the user taps their avatar.
+/// Shows the profile QR code with the handle and a brief instruction.
+private struct ProfileQRBottomSheet: View {
+    let handle: String
+    let photoURL: URL?
+
+    private var qrData: String { "blip://user/\(handle)" }
+    private var initials: String { QRCodeCard.initials(from: handle) }
+
+    var body: some View {
+        VStack(spacing: 20) {
+            // Handle label
+            Text("@\(handle)")
+                .font(.blip(size: 20, weight: .bold))
+                .foregroundStyle(BlipColor.textPrimary)
+                .padding(.top, 20)
+
+            // QR code with profile photo centre
+            QRCodeImageView(
+                data: qrData,
+                centerURL: photoURL,
+                centerInitials: initials,
+                size: 220
+            )
+            .shadow(color: .black.opacity(0.10), radius: 14, x: 0, y: 5)
+
+            Text("others scan this to add you to their blip")
+                .font(.blip(size: 13))
+                .foregroundStyle(BlipColor.textTertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

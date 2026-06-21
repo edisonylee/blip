@@ -6,7 +6,7 @@ import SwiftUI
 // Shows past stitched days for a blip, most recent first.
 // Each row reflects the stitch status:
 //   .ready     → tappable, shows play button + date
-//   .stitching / .queued → spinner + "processing" label (not tappable)
+//   .running / .queued → spinner + "processing" label (not tappable)
 //   .pending   → clock icon + "not yet stitched"
 //   .failed    → warning icon + "export failed"
 
@@ -52,7 +52,7 @@ struct ArchiveView: View {
                 if let url = day.stitchedVideoUrl {
                     ArchivePlayerSheet(dateKey: day.id, url: url)
                 }
-            case .stitching, .queued:
+            case .running, .queued:
                 processingSheet(day: day)
             default:
                 EmptyView()
@@ -114,9 +114,11 @@ struct ArchiveView: View {
             LazyVStack(spacing: 12) {
                 ForEach(repo.days) { day in
                     ArchiveRow(blipId: blip.id, day: day) {
-                        if day.stitchStatus == .ready || day.stitchStatus == .stitching || day.stitchStatus == .queued {
-                            playing = day
-                        }
+                        // Only open the player/processing sheet for these statuses
+                        let tappable = day.stitchStatus == .ready
+                                    || day.stitchStatus == .running
+                                    || day.stitchStatus == .queued
+                        if tappable { playing = day }
                     }
                 }
             }
@@ -209,7 +211,7 @@ private struct ArchiveRow: View {
     private var thumbnailBg: Color {
         switch day.stitchStatus {
         case .ready:    return BlipColor.accentNeutral.opacity(0.12)
-        case .stitching, .queued: return BlipColor.accent.opacity(0.10)
+        case .running, .queued: return BlipColor.accent.opacity(0.10)
         case .failed:   return BlipColor.error.opacity(0.10)
         case .pending:  return BlipColor.border.opacity(0.3)
         }
@@ -222,7 +224,7 @@ private struct ArchiveRow: View {
             Image(systemName: "play.fill")
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(BlipColor.accentNeutral)
-        case .stitching, .queued:
+        case .running, .queued:
             ProgressView().tint(BlipColor.accent).scaleEffect(0.8)
         case .failed:
             Image(systemName: "exclamationmark.triangle.fill")
@@ -246,7 +248,7 @@ private struct ArchiveRow: View {
                     .font(.blip(size: 11))
                     .foregroundStyle(BlipColor.textTertiary)
             }
-        case .stitching, .queued:
+        case .running, .queued:
             Text("stitching…")
                 .font(.blip(size: 11))
                 .foregroundStyle(BlipColor.accent)
