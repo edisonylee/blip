@@ -23,10 +23,14 @@ struct ExportView: View {
     @State private var showShare = false
     @State private var localVideoURL: URL?
     @State private var isPreparingLocal = false
-    @State private var downloadError: String?        // shown when download fails
-    @State private var isSavingToPhotos = false      // in-progress "save to photos"
-    @State private var savedToPhotos = false          // brief success badge
+    @State private var downloadError: String?
+    @State private var isSavingToPhotos = false
+    @State private var savedToPhotos = false
     @State private var showPhotoPermissionAlert = false
+
+    /// Hour currently shown in the preview slider. Initialised to the most
+    /// recent hour with clips once the listener fires.
+    @State private var selectedHour: Int = 0
 
     var body: some View {
         ZStack {
@@ -47,6 +51,12 @@ struct ExportView: View {
             clips.startListening(blip: blip)
             clips.setBlocklist(moderation.blockedUsers)
         }
+        // Default selectedHour to the latest hour with clips when data arrives
+        .onChange(of: hoursWithClips) { _, hours in
+            if !hours.isEmpty && !hours.contains(selectedHour) {
+                selectedHour = hours.last ?? hours[0]
+            }
+        }
         .onReceive(moderation.$blockedUsers) { clips.setBlocklist($0) }
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -57,65 +67,155 @@ struct ExportView: View {
         
     }
 
-    // MARK: - Preview
+    // MARK: - Preview (timeline slider design)
 
     private var previewState: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    headerCopy
+            if hoursWithClips.isEmpty {
+                emptyState
+            } else {
+                // ── Hour label + clip count ───────────────────────────────
+                hourHeader
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 8)
 
-                    if hoursWithClips.isEmpty {
-                        emptyState
-                    } else {
-                        ForEach(hoursWithClips, id: \.self) { hour in
-                            MemberGrid(
-                                blip: blip,
-                                hour: hour,
-                                clipsForHour: clips.clipsByHour[hour] ?? [],
-                                currentUid: currentUid,
-                                isCurrentHour: false,  // preview: render every hour as past-style
-                                onRecord: {},
-                                onInvite: {},
-                                isAuthor: { _ in false },
-                                onDelete: { _ in },
-                                onEditCaption: { _ in },
-                                showsOpenSeats: false
-                            )
-                        }
+                // ── Swipeable MemberGrid (one hour at a time) ─────────────
+                // TabView page style lets the user swipe between hours;
+                // the HourSlider below stays in sync via $selectedHour.
+                TabView(selection: $selectedHour) {
+                    ForEach(hoursWithClips, id: \.self) { hour in
+                        MemberGrid(
+                            blip: blip,
+                            hour: hour,
+                            clipsForHour: clips.clipsByHour[hour] ?? [],
+                            currentUid: currentUid,
+                            isCurrentHour: false,
+                            onRecord: {},
+                            onInvite: {},
+                            isAuthor: { _ in false },
+                            onDelete: { _ in },
+                            onEditCaption: { _ in },
+                            showsOpenSeats: false
+                        )
+                        .padding(.horizontal, 16)
+                        .tag(hour)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 120)  // room for sticky CTA
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .animation(.spring(response: 0.38, dampingFraction: 0.8), value: selectedHour)
+
+                // ── Timeline slider ───────────────────────────────────────
+                VStack(spacing: 6) {
+                    HourSlider(
+                        hours: hoursWithClips,
+                        currentHour: currentHour,
+                        selectedHour: $selectedHour
+                    )
+                    .padding(.horizontal, 20)
+
+                    // Prev / next hour quick-tap buttons
+                    HStack {
+                        Button {
+                            if let idx = hoursWithClips.firstIndex(of: selectedHour),
+                               idx > 0 {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    selectedHour = hoursWithClips[idx - 1]
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(canGoPrev ? BlipColor.textSecondary : BlipColor.border)
+                        }
+                        .disabled(!canGoPrev)
+
+                        Spacer()
+
+                        // Hour range label
+                        Text("\(hoursWithClips.count) hour\(hoursWithClips.count == 1 ? "" : "s") recorded today")
+                            .font(.blip(size: 11))
+                            .foregroundStyle(BlipColor.textTertiary)
+
+                        Spacer()
+
+                        Button {
+                            if let idx = hoursWithClips.firstIndex(of: selectedHour),
+                               idx < hoursWithClips.count - 1 {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    selectedHour = hoursWithClips[idx + 1]
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(canGoNext ? BlipColor.textSecondary : BlipColor.border)
+                        }
+                        .disabled(!canGoNext)
+                    }
+                    .padding(.horizontal, 20)
+                }
+                .padding(.vertical, 12)
+                .background(BlipColor.surface.opacity(0.7))
+                .overlay(alignment: .top) {
+                    Rectangle().fill(BlipColor.border).frame(height: 0.5)
+                }
             }
 
+            // ── Stitch CTA ────────────────────────────────────────────────
             stitchCTABar
         }
     }
 
-    private var headerCopy: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("today, stitched")
-                .font(BlipTypography.title)
-                .foregroundStyle(BlipColor.textPrimary)
-            Text("preview the cut, then stitch.")
-                .font(BlipTypography.caption)
-                .foregroundStyle(BlipColor.textSecondary)
+    // MARK: - Hour header
+
+    private var hourHeader: some View {
+        HStack(alignment: .bottom) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(hourLabel(for: selectedHour))
+                    .font(.system(size: 28, weight: .black, design: .rounded))
+                    .foregroundStyle(BlipColor.textPrimary)
+                    .contentTransition(.numericText())
+                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedHour)
+
+                let clipsThisHour = clips.clipsByHour[selectedHour]?.count ?? 0
+                Text("\(clipsThisHour) clip\(clipsThisHour == 1 ? "" : "s") recorded")
+                    .font(.blip(size: 13))
+                    .foregroundStyle(BlipColor.textTertiary)
+                    .contentTransition(.numericText())
+                    .animation(.spring(response: 0.35), value: selectedHour)
+            }
+
+            Spacer()
+
+            // Dot indicator: which hour in the sequence
+            if hoursWithClips.count > 1,
+               let idx = hoursWithClips.firstIndex(of: selectedHour) {
+                Text("\(idx + 1) / \(hoursWithClips.count)")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(BlipColor.textTertiary)
+                    .monospacedDigit()
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 4)
     }
 
+    // MARK: - Empty / CTA / helpers
+
     private var emptyState: some View {
-        VStack(spacing: 8) {
-            Spacer().frame(height: 80)
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "camera.badge.clock")
+                .font(.system(size: 42, weight: .light))
+                .foregroundStyle(BlipColor.textTertiary)
             Text("no clips today yet")
                 .font(BlipTypography.body)
                 .foregroundStyle(BlipColor.textSecondary)
-            Text("record at least one to enable export.")
-                .font(BlipTypography.caption)
+            Text("record a blip this hour to enable export.")
+                .font(.blip(size: 13))
                 .foregroundStyle(BlipColor.textTertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Spacer()
         }
         .frame(maxWidth: .infinity)
     }
@@ -124,22 +224,43 @@ struct ExportView: View {
         Button {
             Task { await service.stitch(blipId: blip.id) }
         } label: {
-            Text(stitchButtonLabel)
-                .font(BlipTypography.body)
-                .tracking(BlipTypography.titleTracking)
-                .foregroundStyle(BlipColor.accentNeutralOn)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(
-                    BlipColor.accentNeutral.opacity(clipCount == 0 ? 0.4 : 1.0),
-                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                )
+            HStack(spacing: 8) {
+                Image(systemName: "film.stack.fill")
+                    .font(.system(size: 16))
+                Text(stitchButtonLabel)
+                    .font(BlipTypography.body)
+                    .tracking(BlipTypography.titleTracking)
+            }
+            .foregroundStyle(BlipColor.accentNeutralOn)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(
+                BlipColor.accentNeutral.opacity(clipCount == 0 ? 0.4 : 1.0),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
         }
         .disabled(clipCount == 0)
         .padding(.horizontal, 16)
         .padding(.bottom, 24)
         .padding(.top, 12)
-        .background(BlipColor.surface)
+        .background(BlipColor.surface.opacity(0.7))
+    }
+
+    private var canGoPrev: Bool {
+        (hoursWithClips.firstIndex(of: selectedHour) ?? 0) > 0
+    }
+
+    private var canGoNext: Bool {
+        guard let idx = hoursWithClips.firstIndex(of: selectedHour) else { return false }
+        return idx < hoursWithClips.count - 1
+    }
+
+    private func hourLabel(for hour: Int) -> String {
+        if hour == currentHour { return "now" }
+        var c = DateComponents(); c.hour = hour
+        let date = Calendar.current.date(from: c) ?? Date()
+        let f = DateFormatter(); f.dateFormat = "h a"
+        return f.string(from: date).lowercased()
     }
 
     // MARK: - Other states
