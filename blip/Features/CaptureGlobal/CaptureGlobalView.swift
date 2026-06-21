@@ -24,6 +24,8 @@ struct CaptureGlobalView: View {
     @StateObject private var vm: CaptureGlobalViewModel
 
     @State private var showPicker = false
+    /// Zoom level committed at the start of the current pinch — same pattern as CaptureView.
+    @State private var baseZoom: CGFloat = 1.0
 
     // MARK: - Layout constants
 
@@ -55,8 +57,39 @@ struct CaptureGlobalView: View {
                 Spacer()
                 statusOverlay
                 Spacer()
-                recordButton
-                    .padding(.bottom, Self.recordBottomPadding)
+                // Lens selector — only visible when ready and device has multiple lenses
+                if !session.availableLenses.isEmpty && session.state == .ready {
+                    lensButtonRow
+                        .padding(.bottom, 12)
+                }
+                // Record button with countdown ring + REC label (matches CaptureView)
+                ZStack {
+                    recordButton
+
+                    if session.state == .recording {
+                        Circle()
+                            .trim(from: 0, to: max(0, min(1, 1 - session.recordingElapsed / CaptureSession.clipDuration)))
+                            .stroke(BlipColor.accent, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                            .frame(width: Self.recordButtonOuter, height: Self.recordButtonOuter)
+                            .rotationEffect(.degrees(-90))
+                            .animation(.linear(duration: 0.1), value: session.recordingElapsed)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .padding(.bottom, Self.recordBottomPadding)
+                .overlay(alignment: .top) {
+                    if session.state == .recording {
+                        let remaining = max(0, CaptureSession.clipDuration - session.recordingElapsed)
+                        Text("REC · \(String(format: "%.1f", remaining))s left")
+                            .font(.blip(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(BlipColor.error, in: Capsule())
+                            .offset(y: -28)
+                            .allowsHitTesting(false)
+                    }
+                }
             }
         }
         .preferredColorScheme(.dark)
@@ -89,6 +122,11 @@ struct CaptureGlobalView: View {
             CapturePreview(session: session.session)
                 .aspectRatio(Self.aspectLandscape, contentMode: .fit)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .gesture(
+                    MagnificationGesture()
+                        .onChanged { scale in session.setZoom(factor: baseZoom * scale) }
+                        .onEnded   { scale in baseZoom = max(1.0, baseZoom * scale) }
+                )
         }
 
         #if DEBUG
@@ -215,6 +253,37 @@ struct CaptureGlobalView: View {
         }
         .accessibilityLabel(session.state == .recording ? "recording" : "record")
         .disabled(disableRecord)
+    }
+
+    // MARK: - Lens row (matches CaptureView)
+
+    private var lensButtonRow: some View {
+        HStack(spacing: 8) {
+            ForEach(session.availableLenses) { lens in
+                Button {
+                    session.setZoom(factor: lens.zoomFactor, ramped: true)
+                    baseZoom = lens.zoomFactor
+                } label: {
+                    Text(lens.label)
+                        .font(.blip(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(
+                            isActiveLens(lens) ? Color.white.opacity(0.18) : Color.black.opacity(0.4),
+                            in: Circle()
+                        )
+                        .overlay(Circle().stroke(isActiveLens(lens) ? Color.white : Color.clear, lineWidth: 1.5))
+                }
+                .accessibilityLabel("zoom \(lens.label)")
+            }
+        }
+    }
+
+    private func isActiveLens(_ lens: CaptureSession.LensOption) -> Bool {
+        guard let nearest = session.availableLenses.min(by: {
+            abs($0.zoomFactor - session.currentZoomFactor) < abs($1.zoomFactor - session.currentZoomFactor)
+        }) else { return false }
+        return nearest.id == lens.id
     }
 
     // MARK: - Helpers

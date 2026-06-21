@@ -406,7 +406,8 @@ struct ChatView: View {
                         maxSelectionCount: 10,
                         matching: .images
                     ) {
-                        ZStack(alignment: .topTrailing) {
+                        // ZStack default = center; badge overlaid at topTrailing
+                        ZStack {
                             Circle()
                                 .fill(chatSurface)
                                 .frame(width: 36, height: 36)
@@ -417,6 +418,8 @@ struct ChatView: View {
                                     .font(.system(size: 15, weight: .medium))
                                     .foregroundStyle(BlipColor.textSecondary)
                             }
+                        }
+                        .overlay(alignment: .topTrailing) {
                             if !pickedPhotos.isEmpty {
                                 Text("\(pickedPhotos.count)")
                                     .font(.system(size: 9, weight: .bold))

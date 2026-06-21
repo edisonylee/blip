@@ -126,7 +126,16 @@ struct CaptureView: View {
 
     private var topBar: some View {
         HStack {
-            Button { dismiss() } label: {
+            Button {
+                // Reset orientation BEFORE dismiss so it takes effect during
+                // the dismissal animation, not after — which was causing the
+                // "stays landscape" bug when cancelling out of the capture screen.
+                AppDelegate.lockedOrientation = .portrait
+                if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                    scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+                }
+                dismiss()
+            } label: {
                 Image(systemName: "xmark")
                     .font(.title3)
                     .foregroundStyle(.white)

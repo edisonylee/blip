@@ -26,7 +26,19 @@ final class AudioRecorder: ObservableObject {
     // MARK: - Permissions
 
     func requestPermission() async -> Bool {
-        await AVAudioApplication.requestRecordPermission()
+        // AVAudioApplication.requestRecordPermission() is iOS 17+.
+        // Use the AVAudioSession callback API on older OS versions.
+        let status = AVAudioSession.sharedInstance().recordPermission
+        if status == .granted { return true }
+        if status == .denied  { return false }
+        if #available(iOS 17, *) {
+            return await AVAudioApplication.requestRecordPermission()
+        }
+        return await withCheckedContinuation { cont in
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                cont.resume(returning: granted)
+            }
+        }
     }
 
     // MARK: - Start
