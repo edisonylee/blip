@@ -80,30 +80,51 @@ struct ExportView: View {
                     .padding(.top, 16)
                     .padding(.bottom, 8)
 
-                // ── Swipeable MemberGrid (one hour at a time) ─────────────
-                // TabView page style lets the user swipe between hours;
-                // the HourSlider below stays in sync via $selectedHour.
-                TabView(selection: $selectedHour) {
-                    ForEach(hoursWithClips, id: \.self) { hour in
-                        MemberGrid(
-                            blip: blip,
-                            hour: hour,
-                            clipsForHour: clips.clipsByHour[hour] ?? [],
-                            currentUid: currentUid,
-                            isCurrentHour: false,
-                            onRecord: {},
-                            onInvite: {},
-                            isAuthor: { _ in false },
-                            onDelete: { _ in },
-                            onEditCaption: { _ in },
-                            showsOpenSeats: false
-                        )
-                        .padding(.horizontal, 16)
-                        .tag(hour)
-                    }
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+                // ── Single MemberGrid for the selected hour ──────────────
+                // IMPORTANT: TabView(.page) was here before but it pre-creates
+                // ALL hours' MemberGrids simultaneously. Each grid contains
+                // AVQueuePlayer instances per clip cell — N hours × M members
+                // = N×M active video players → resource exhaustion crash.
+                //
+                // Solution: show exactly ONE grid at a time, keyed by the hour
+                // so SwiftUI tears down the old grid (stops its AVPlayers) and
+                // creates a fresh one when the selected hour changes.
+                MemberGrid(
+                    blip: blip,
+                    hour: selectedHour,
+                    clipsForHour: clips.clipsByHour[selectedHour] ?? [],
+                    currentUid: currentUid,
+                    isCurrentHour: false,
+                    onRecord: {},
+                    onInvite: {},
+                    isAuthor: { _ in false },
+                    onDelete: { _ in },
+                    onEditCaption: { _ in },
+                    showsOpenSeats: false
+                )
+                .id(selectedHour)   // force teardown + recreation on hour change
+                .padding(.horizontal, 16)
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal:   .move(edge: .leading).combined(with: .opacity)
+                ))
                 .animation(.spring(response: 0.38, dampingFraction: 0.8), value: selectedHour)
+                // Swipe left/right to change hours (replaces the TabView swipe)
+                .gesture(
+                    DragGesture(minimumDistance: 30)
+                        .onEnded { v in
+                            guard let idx = hoursWithClips.firstIndex(of: selectedHour) else { return }
+                            if v.translation.width < -40 && idx < hoursWithClips.count - 1 {
+                                withAnimation(.spring(response: 0.38, dampingFraction: 0.8)) {
+                                    selectedHour = hoursWithClips[idx + 1]
+                                }
+                            } else if v.translation.width > 40 && idx > 0 {
+                                withAnimation(.spring(response: 0.38, dampingFraction: 0.8)) {
+                                    selectedHour = hoursWithClips[idx - 1]
+                                }
+                            }
+                        }
+                )
 
                 // ── Timeline slider ───────────────────────────────────────
                 VStack(spacing: 6) {
