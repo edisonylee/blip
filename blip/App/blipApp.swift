@@ -180,9 +180,31 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let info = response.notification.request.content.userInfo
-        if let deepLink = info["deepLink"] as? String, let url = URL(string: deepLink) {
-            Task { @MainActor [deepLinks] in
+
+        Task { @MainActor [deepLinks] in
+            // Priority 1: explicit deepLink payload set by Cloud Function
+            if let raw = info["deepLink"] as? String, let url = URL(string: raw) {
                 deepLinks?.handle(url: url)
+                return
+            }
+            // Priority 2: route by notification type
+            let type = info["type"] as? String ?? ""
+            switch type {
+            case "friend_request":
+                // → open friends tab (handled by app routing to friends page)
+                if let url = URL(string: "blip://friends") { deepLinks?.handle(url: url) }
+            case "blip_invite", "blip_joined":
+                if let blipId = info["blipId"] as? String,
+                   let url = URL(string: "blip://blip/\(blipId)") {
+                    deepLinks?.handle(url: url)
+                }
+            case "clip_posted", "nudge":
+                if let blipId = info["blipId"] as? String,
+                   let url = URL(string: "blip://blip/\(blipId)") {
+                    deepLinks?.handle(url: url)
+                }
+            default:
+                break
             }
         }
         completionHandler()

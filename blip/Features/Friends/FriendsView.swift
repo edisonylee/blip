@@ -285,30 +285,25 @@ private struct UserBrowseCard: View {
     let onAdd: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Avatar
-            AvatarView(
-                initials: initials,
-                hasPosted: false,
-                size: 44
-            )
+        HStack(spacing: 10) {
+            // Avatar — fixed, never shrinks
+            AvatarView(initials: initials, hasPosted: false, size: 42)
 
-            // Handle + uid snippet
+            // Text — low priority, yields space to the action button
             VStack(alignment: .leading, spacing: 2) {
                 Text(user.handle.map { "@\($0)" } ?? "unnamed")
-                    .font(.blip(size: 15, weight: .semibold))
+                    .font(.blip(size: 14, weight: .semibold))
                     .foregroundStyle(BlipColor.textPrimary)
                     .lineLimit(1)
-                Text(String(user.id.prefix(8)))
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(BlipColor.textTertiary)
-                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
+            .layoutPriority(0)
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 6)
 
-            // Action
+            // Action — fixed intrinsic size
             actionButton
+                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(14)
         .background(BlipColor.surface,
@@ -322,34 +317,35 @@ private struct UserBrowseCard: View {
         case .addable:
             Button(action: onAdd) {
                 Text("add")
-                    .font(.blip(size: 13, weight: .bold))
+                    .font(.blip(size: 12, weight: .bold))
+                    .lineLimit(1)
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 18)
+                    .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(BlipColor.accentNeutral,
-                                in: Capsule())
+                    .background(BlipColor.accentNeutral, in: Capsule())
             }
             .buttonStyle(_ScalePress())
 
         case .pending:
             Text("pending")
-                .font(.blip(size: 12, weight: .medium))
+                .font(.blip(size: 11, weight: .medium))
+                .lineLimit(1)
                 .foregroundStyle(BlipColor.textTertiary)
-                .padding(.horizontal, 14)
+                .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(BlipColor.surface,
-                            in: Capsule())
+                .background(BlipColor.surface, in: Capsule())
                 .overlay(Capsule().stroke(BlipColor.border, lineWidth: 1))
 
         case .friends:
-            HStack(spacing: 4) {
+            HStack(spacing: 3) {
                 Image(systemName: "checkmark")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 9, weight: .bold))
                 Text("friends")
-                    .font(.blip(size: 12, weight: .semibold))
+                    .font(.blip(size: 11, weight: .semibold))
+                    .lineLimit(1)
             }
             .foregroundStyle(Color(red: 0.2, green: 0.78, blue: 0.45))
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Color(red: 0.2, green: 0.78, blue: 0.45).opacity(0.12),
                         in: Capsule())
@@ -370,27 +366,30 @@ private struct FriendRequestRow: View {
     let onIgnore: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             AvatarView(initials: String(fromUid.prefix(2)).uppercased(),
-                       hasPosted: false, size: 38)
+                       hasPosted: false, size: 36)
 
+            // Text section — low layout priority so buttons always get their space
             VStack(alignment: .leading, spacing: 2) {
                 Text("friend request")
-                    .font(.blip(size: 14, weight: .semibold))
+                    .font(.blip(size: 13, weight: .semibold))
                     .foregroundStyle(BlipColor.textPrimary)
-                Text(String(fromUid.prefix(8)))
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(BlipColor.textTertiary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
+            .layoutPriority(0)   // yields space to buttons if needed
 
-            Spacer()
+            Spacer(minLength: 6)
 
-            HStack(spacing: 8) {
+            // Button pair — fixed intrinsic size, never compressed
+            HStack(spacing: 6) {
                 Button(action: onIgnore) {
                     Text("ignore")
-                        .font(.blip(size: 12, weight: .semibold))
+                        .font(.blip(size: 11, weight: .semibold))
+                        .lineLimit(1)
                         .foregroundStyle(BlipColor.textSecondary)
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 10)
                         .padding(.vertical, 7)
                         .background(BlipColor.surface, in: Capsule())
                         .overlay(Capsule().stroke(BlipColor.border, lineWidth: 1))
@@ -399,14 +398,16 @@ private struct FriendRequestRow: View {
 
                 Button(action: onAccept) {
                     Text("accept")
-                        .font(.blip(size: 12, weight: .bold))
+                        .font(.blip(size: 11, weight: .bold))
+                        .lineLimit(1)
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 10)
                         .padding(.vertical, 7)
                         .background(BlipColor.accentNeutral, in: Capsule())
                 }
                 .buttonStyle(.plain)
             }
+            .fixedSize(horizontal: true, vertical: false)  // buttons never shrink
         }
         .padding(12)
         .background(BlipColor.surface,

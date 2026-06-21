@@ -203,35 +203,37 @@ private struct FriendRequestCard: View {
     let onDecline: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Avatar placeholder
+        HStack(spacing: 10) {
+            // Avatar
             ZStack {
                 Circle()
                     .fill(BlipColor.accent.opacity(0.13))
-                    .frame(width: 46, height: 46)
+                    .frame(width: 42, height: 42)
                 Text(String(fromUid.prefix(2)).uppercased())
-                    .font(.blip(size: 14, weight: .bold))
+                    .font(.blip(size: 13, weight: .bold))
                     .foregroundStyle(BlipColor.accent)
             }
 
+            // Text — yields space to buttons
             VStack(alignment: .leading, spacing: 2) {
                 Text("friend request")
-                    .font(.blip(size: 15, weight: .semibold))
+                    .font(.blip(size: 14, weight: .semibold))
                     .foregroundStyle(BlipColor.textPrimary)
-                Text(String(fromUid.prefix(10)) + "…")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(BlipColor.textTertiary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
+            .layoutPriority(0)
 
-            Spacer()
+            Spacer(minLength: 6)
 
-            HStack(spacing: 8) {
+            // Buttons — fixed intrinsic size, never wrap
+            HStack(spacing: 6) {
                 Button(action: onDecline) {
                     Text("decline")
-                        .font(.blip(size: 12, weight: .semibold))
+                        .font(.blip(size: 11, weight: .semibold))
+                        .lineLimit(1)
                         .foregroundStyle(BlipColor.textSecondary)
-                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .padding(.horizontal, 10).padding(.vertical, 7)
                         .background(BlipColor.surface, in: Capsule())
                         .overlay(Capsule().stroke(BlipColor.border, lineWidth: 1))
                 }
@@ -240,19 +242,21 @@ private struct FriendRequestCard: View {
 
                 Button(action: onAccept) {
                     if isProcessing {
-                        ProgressView().tint(.white).scaleEffect(0.75)
-                            .frame(width: 60, height: 34)
+                        ProgressView().tint(.white).scaleEffect(0.7)
+                            .frame(width: 52, height: 32)
                     } else {
                         Text("accept")
-                            .font(.blip(size: 12, weight: .bold))
+                            .font(.blip(size: 11, weight: .bold))
+                            .lineLimit(1)
                             .foregroundStyle(.white)
-                            .padding(.horizontal, 14).padding(.vertical, 8)
+                            .padding(.horizontal, 10).padding(.vertical, 7)
                     }
                 }
                 .background(BlipColor.accentNeutral, in: Capsule())
                 .buttonStyle(.plain)
                 .disabled(isProcessing)
             }
+            .fixedSize(horizontal: true, vertical: false)
         }
         .padding(14)
         .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))

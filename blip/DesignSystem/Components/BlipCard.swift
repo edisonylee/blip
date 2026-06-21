@@ -48,6 +48,7 @@ struct BlipCard: View {
                 Text("\(members.count) \(members.count == 1 ? "member" : "members")")
                     .font(.blip(size: 10, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.65))
+                    .lineLimit(1)
             }
 
             // ── Row 2: overlapping member avatar circles ───────────────

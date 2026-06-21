@@ -247,19 +247,24 @@ private struct ArchiveRow: View {
                 Text(relativeDate(at))
                     .font(.blip(size: 11))
                     .foregroundStyle(BlipColor.textTertiary)
+                    .lineLimit(1)
             }
         case .running, .queued:
             Text("stitching…")
                 .font(.blip(size: 11))
                 .foregroundStyle(BlipColor.accent)
+                .lineLimit(1)
         case .failed:
-            Text("export failed — try again from the group")
+            Text("export failed — re-stitch from group")
                 .font(.blip(size: 11))
                 .foregroundStyle(BlipColor.error)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         case .pending:
             Text("not yet stitched")
                 .font(.blip(size: 11))
                 .foregroundStyle(BlipColor.textTertiary)
+                .lineLimit(1)
         }
     }
 
