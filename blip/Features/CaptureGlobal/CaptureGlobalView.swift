@@ -93,7 +93,24 @@ struct CaptureGlobalView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onDisappear { session.stop() }
+        .onAppear {
+            // Lock to landscape so the recording experience matches CaptureView
+            // (group blip camera). The sensor is landscape-native; portrait mode
+            // letterboxes the preview.
+            AppDelegate.lockedOrientation = .landscape
+            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
+            }
+        }
+        .onDisappear {
+            session.stop()
+            // Release orientation lock so the app returns to portrait after
+            // the camera cover dismisses (matches CaptureView behaviour).
+            AppDelegate.lockedOrientation = .portrait
+            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+            }
+        }
         .onChange(of: vm.recordingURL) { _, url in
             // When a recording finishes, surface the picker. Closing it without sending
             // returns to the camera (vm.discardRecording) so the user can re-record.

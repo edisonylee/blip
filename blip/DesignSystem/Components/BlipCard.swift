@@ -57,18 +57,17 @@ struct BlipCard: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: Self.cardHeight)
-        .background(
-            ZStack {
-                // Solid colour base
-                cardColor
-                // Subtle diagonal highlight — breaks the flat look
-                LinearGradient(
-                    colors: [Color.white.opacity(0.12), Color.clear],
-                    startPoint: .topLeading,
-                    endPoint: .center
-                )
-            },
-            in: RoundedRectangle(cornerRadius: BlipRadius.md, style: .continuous)
+        // ZStack can't be used as a ShapeStyle — apply base colour, then
+        // overlay the gradient separately both clipped to the same shape.
+        .background(cardColor,
+                    in: RoundedRectangle(cornerRadius: BlipRadius.md, style: .continuous))
+        .overlay(
+            LinearGradient(
+                colors: [Color.white.opacity(0.12), Color.clear],
+                startPoint: .topLeading,
+                endPoint: .center
+            )
+            .clipShape(RoundedRectangle(cornerRadius: BlipRadius.md, style: .continuous))
         )
         .shadow(color: cardColor.opacity(0.35), radius: 8, x: 0, y: 3)
     }
