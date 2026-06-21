@@ -128,6 +128,7 @@ struct ChatView: View {
     @State private var pendingAudioBars: [CGFloat] = []
     @State private var pendingAudioDuration: TimeInterval = 0
     @State private var isSendingAudio = false
+    @State private var showMicAlert = false  // shown when mic permission is denied
 
     var body: some View {
         ZStack {
@@ -213,6 +214,17 @@ struct ChatView: View {
             ImageGalleryModal(urls: galleryImages) {
                 showImageGallery = false
             }
+        }
+        // Shown when the user taps the mic button but has denied microphone access
+        .alert("microphone access needed", isPresented: $showMicAlert) {
+            Button("open settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("cancel", role: .cancel) {}
+        } message: {
+            Text("blip needs microphone access to record voice messages.\ntap 'open settings' to allow it.")
         }
     }
 
@@ -527,12 +539,11 @@ struct ChatView: View {
             }
             .buttonStyle(.plain)
 
-            // Live waveform + timer
+            // Live waveform + timer — capsule height matches the 36pt buttons
             HStack(spacing: 8) {
                 Circle()
                     .fill(BlipColor.error)
                     .frame(width: 8, height: 8)
-                    .opacity(0.85)
 
                 AudioWaveformView(
                     bars: audioRec.liveBars,
@@ -546,10 +557,11 @@ struct ChatView: View {
                 Text(formatAudio(audioRec.elapsed))
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
                     .foregroundStyle(BlipColor.textPrimary)
-                    .frame(width: 36)
+                    .monospacedDigit()
+                    .frame(width: 38, alignment: .trailing)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 4)  // 4pt → capsule height = 28+8 = 36pt, matches buttons
             .background(Color.black.opacity(0.05), in: Capsule())
 
             // Stop and go to preview
@@ -574,16 +586,34 @@ struct ChatView: View {
 
     // MARK: - Audio recording helpers
 
+    @MainActor
     private func toggleRecording() async {
         guard case .signedIn = auth.state else { return }
-        let granted = await audioRec.requestPermission()
-        guard granted else { return }
+
+        // If already recording, stop first — no permission check needed.
         if audioRec.isRecording {
             stopAndPreviewAudio()
-        } else {
-            inputFocused = false
-            audioRec.start()
+            return
         }
+
+        // Check permission status before requesting so we know whether to
+        // show the "open Settings" alert (denied) vs the system dialog (undetermined).
+        let current = AVAudioSession.sharedInstance().recordPermission
+        if current == .denied {
+            showMicAlert = true
+            return
+        }
+
+        // .undetermined → will trigger the system permission dialog once.
+        let granted = await audioRec.requestPermission()
+        guard granted else {
+            // User just denied the just-shown dialog.
+            showMicAlert = true
+            return
+        }
+
+        inputFocused = false
+        audioRec.start()
     }
 
     private func stopAndPreviewAudio() {
@@ -630,7 +660,9 @@ struct ChatView: View {
             pendingAudioBars = []
             pendingAudioDuration = 0
         } catch {
-            imageSendError = "Audio send failed: \(error.localizedDescription)"
+            // Surface a clean message — the raw Firebase error includes internal
+            // storage paths that are not useful to the user.
+            imageSendError = "couldn't send voice message — please try again."
         }
     }
 

@@ -1,9 +1,15 @@
 import AVKit
 import SwiftUI
 
-/// Past blips — list of stitched days for this blip, most recent first.
-/// Korean Setlog users specifically asked for this (per research doc); v0 ships
-/// list-of-rows; calendar grid is v0.5 polish.
+// MARK: - Archive screen
+//
+// Shows past stitched days for a blip, most recent first.
+// Each row reflects the stitch status:
+//   .ready     → tappable, shows play button + date
+//   .running / .queued → spinner + "processing" label (not tappable)
+//   .pending   → clock icon + "not yet stitched"
+//   .failed    → warning icon + "export failed"
+
 struct ArchiveView: View {
     let blip: Blip
 
@@ -13,113 +19,258 @@ struct ArchiveView: View {
 
     var body: some View {
         ZStack {
-            BlipColor.background.ignoresSafeArea()
+            BlipColor.backgroundGradient.ignoresSafeArea()
 
-            if repo.days.isEmpty {
-                emptyState
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(repo.days) { day in
-                            ArchiveRow(blipId: blip.id, day: day) {
-                                playing = day
-                            }
-                        }
-                    }
-                    .padding(16)
+            Group {
+                if repo.isLoading && repo.days.isEmpty {
+                    loadingState
+                } else if let err = repo.lastError {
+                    errorState(err)
+                } else if repo.days.isEmpty {
+                    emptyState
+                } else {
+                    dayList
                 }
             }
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Text("archive").font(BlipTypography.body).foregroundStyle(BlipColor.textPrimary)
+                Text("archive")
+                    .font(BlipTypography.body)
+                    .foregroundStyle(BlipColor.textPrimary)
             }
         }
         .toolbarBackground(BlipColor.background, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
         .task(id: blip.id) {
             guard case .signedIn(let uid) = auth.state else { return }
             repo.startListening(blip: blip, uid: uid)
         }
+        .onDisappear { repo.stopListening() }
         .sheet(item: $playing) { day in
-            if let url = day.stitchedVideoUrl {
-                ArchivePlayerSheet(dateKey: day.id, url: url)
+            switch day.stitchStatus {
+            case .ready:
+                if let url = day.stitchedVideoUrl {
+                    ArchivePlayerSheet(dateKey: day.id, url: url)
+                }
+            case .running, .queued:
+                processingSheet(day: day)
+            default:
+                EmptyView()
             }
         }
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 8) {
+    // MARK: - States
+
+    private var loadingState: some View {
+        VStack(spacing: 12) {
             Spacer()
-            Image(systemName: "calendar")
-                .font(.title)
-                .foregroundStyle(BlipColor.textTertiary)
-            Text("no archive yet")
-                .font(BlipTypography.body)
-                .foregroundStyle(BlipColor.textSecondary)
-            Text("export a day to see it here.")
-                .font(.caption)
+            ProgressView().tint(BlipColor.accent)
+            Text("loading archive…")
+                .font(.blip(size: 13))
                 .foregroundStyle(BlipColor.textTertiary)
             Spacer()
         }
     }
+
+    private func errorState(_ message: String) -> some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 36, weight: .light))
+                .foregroundStyle(BlipColor.error)
+            Text("couldn't load archive")
+                .font(BlipTypography.body)
+                .foregroundStyle(BlipColor.textPrimary)
+            Text(message)
+                .font(.blip(size: 12))
+                .foregroundStyle(BlipColor.textTertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Spacer()
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "calendar.badge.clock")
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(BlipColor.textTertiary)
+            Text("no archive yet")
+                .font(BlipTypography.body)
+                .foregroundStyle(BlipColor.textSecondary)
+            Text("tap Export in the group detail to stitch a day.\nit will appear here once it's ready.")
+                .font(.blip(size: 13))
+                .foregroundStyle(BlipColor.textTertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Spacer()
+        }
+    }
+
+    private var dayList: some View {
+        ScrollView(showsIndicators: false) {
+            LazyVStack(spacing: 12) {
+                ForEach(repo.days) { day in
+                    ArchiveRow(blipId: blip.id, day: day) {
+                        // Only open the player/processing sheet for these statuses
+                        let tappable = day.stitchStatus == .ready
+                                    || day.stitchStatus == .running
+                                    || day.stitchStatus == .queued
+                        if tappable { playing = day }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+        }
+    }
+
+    // MARK: - Processing sheet (shown when user taps a day that's still stitching)
+
+    private func processingSheet(day: BlipDay) -> some View {
+        VStack(spacing: 16) {
+            Spacer()
+            ProgressView().tint(BlipColor.accent).controlSize(.large)
+            Text("stitching \(formatDateKey(day.id))…")
+                .font(BlipTypography.body)
+                .foregroundStyle(BlipColor.textPrimary)
+            Text("this usually takes 30–90 seconds.\ncheck back in a moment.")
+                .font(.blip(size: 13))
+                .foregroundStyle(BlipColor.textTertiary)
+                .multilineTextAlignment(.center)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding()
+        .presentationDetents([.medium])
+    }
 }
+
+// MARK: - Archive row
 
 private struct ArchiveRow: View {
     let blipId: String
     let day: BlipDay
-    let onPlay: () -> Void
+    let onTap: () -> Void
 
     @StateObject private var likes = DayLikesRepository()
 
     var body: some View {
         HStack(spacing: 14) {
-            // Tap thumbnail / metadata column to open the player. The heart sits
-            // outside this Button so it doesn't trigger play on like.
-            Button(action: onPlay) {
+            Button(action: onTap) {
                 HStack(spacing: 14) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(BlipColor.surfaceElevated)
-                            .frame(width: 56, height: 80)
-                        Image(systemName: "play.fill")
+                    statusThumbnail
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(formatDateKey(day.id))
+                            .font(.blip(size: 15, weight: .semibold))
                             .foregroundStyle(BlipColor.textPrimary)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(day.id)
-                            .font(BlipTypography.body)
-                            .foregroundStyle(BlipColor.textPrimary)
-                        if let stitchedAt = day.stitchedAt {
-                            Text(relative(stitchedAt))
-                                .font(.caption2)
-                                .foregroundStyle(BlipColor.textTertiary)
-                        }
+                        statusLabel
                     }
                     Spacer()
                 }
             }
             .buttonStyle(.plain)
+            .disabled(day.stitchStatus == .pending || day.stitchStatus == .failed)
 
-            HeartButton(
-                liked: likes.liked,
-                count: likes.count,
-                isWriting: likes.isWriting,
-                onTap: { Task { await likes.toggle() } }
-            )
+            // Heart — only for ready days
+            if day.stitchStatus == .ready {
+                HeartButton(
+                    liked: likes.liked,
+                    count: likes.count,
+                    isWriting: likes.isWriting,
+                    onTap: { Task { await likes.toggle() } }
+                )
+            }
         }
-        .padding(12)
-        .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 14))
+        .padding(14)
+        .background(BlipColor.surface,
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.04), radius: 6, x: 0, y: 2)
         .task(id: day.id) {
-            likes.startListening(blipId: blipId, dateKey: day.id)
+            if day.stitchStatus == .ready {
+                likes.startListening(blipId: blipId, dateKey: day.id)
+            }
         }
     }
 
-    private func relative(_ date: Date) -> String {
+    // MARK: Thumbnail / status icon
+
+    @ViewBuilder
+    private var statusThumbnail: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(thumbnailBg)
+                .frame(width: 56, height: 80)
+
+            thumbnailIcon
+        }
+    }
+
+    private var thumbnailBg: Color {
+        switch day.stitchStatus {
+        case .ready:    return BlipColor.accentNeutral.opacity(0.12)
+        case .running, .queued: return BlipColor.accent.opacity(0.10)
+        case .failed:   return BlipColor.error.opacity(0.10)
+        case .pending:  return BlipColor.border.opacity(0.3)
+        }
+    }
+
+    @ViewBuilder
+    private var thumbnailIcon: some View {
+        switch day.stitchStatus {
+        case .ready:
+            Image(systemName: "play.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(BlipColor.accentNeutral)
+        case .running, .queued:
+            ProgressView().tint(BlipColor.accent).scaleEffect(0.8)
+        case .failed:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(BlipColor.error)
+        case .pending:
+            Image(systemName: "clock")
+                .font(.system(size: 18))
+                .foregroundStyle(BlipColor.textTertiary)
+        }
+    }
+
+    // MARK: Status sub-label
+
+    @ViewBuilder
+    private var statusLabel: some View {
+        switch day.stitchStatus {
+        case .ready:
+            if let at = day.stitchedAt {
+                Text(relativeDate(at))
+                    .font(.blip(size: 11))
+                    .foregroundStyle(BlipColor.textTertiary)
+            }
+        case .running, .queued:
+            Text("stitching…")
+                .font(.blip(size: 11))
+                .foregroundStyle(BlipColor.accent)
+        case .failed:
+            Text("export failed — try again from the group")
+                .font(.blip(size: 11))
+                .foregroundStyle(BlipColor.error)
+        case .pending:
+            Text("not yet stitched")
+                .font(.blip(size: 11))
+                .foregroundStyle(BlipColor.textTertiary)
+        }
+    }
+
+    private func relativeDate(_ date: Date) -> String {
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .short
         return f.localizedString(for: date, relativeTo: Date())
     }
 }
+
+// MARK: - Player sheet
 
 private struct ArchivePlayerSheet: View {
     let dateKey: String
@@ -131,21 +282,22 @@ private struct ArchivePlayerSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                BlipColor.mediaBackdrop.ignoresSafeArea()
+                Color.black.ignoresSafeArea()
                 ArchivePlayer(url: url)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("done") { dismiss() }
-                        .foregroundStyle(BlipColor.textPrimary)
+                    Button("done") { dismiss() }.foregroundStyle(.white)
                 }
                 ToolbarItem(placement: .principal) {
-                    Text(dateKey).font(BlipTypography.body).foregroundStyle(BlipColor.textPrimary)
+                    Text(formatDateKey(dateKey))
+                        .font(BlipTypography.body)
+                        .foregroundStyle(.white)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showShare = true } label: {
                         Image(systemName: "square.and.arrow.up")
-                            .foregroundStyle(BlipColor.textPrimary)
+                            .foregroundStyle(.white)
                     }
                     .accessibilityLabel("share")
                 }
@@ -173,10 +325,21 @@ private struct ArchivePlayer: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {}
 
-    // Without this, the AVPlayer keeps decoding (and the Storage download
-    // keeps streaming) after the sheet dismisses — leaks memory + egress $.
     static func dismantleUIViewController(_ uiViewController: AVPlayerViewController, coordinator: ()) {
         uiViewController.player?.pause()
         uiViewController.player = nil
     }
+}
+
+// MARK: - Shared date formatter
+
+/// Converts a raw `yyyy-MM-dd` dateKey into a readable string like "Monday, June 21".
+private func formatDateKey(_ dateKey: String) -> String {
+    let parser = DateFormatter()
+    parser.dateFormat = "yyyy-MM-dd"
+    parser.locale = .current
+    guard let date = parser.date(from: dateKey) else { return dateKey }
+    let display = DateFormatter()
+    display.dateFormat = "EEEE, MMMM d"
+    return display.string(from: date)
 }

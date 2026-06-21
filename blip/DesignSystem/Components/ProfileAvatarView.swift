@@ -16,6 +16,9 @@ struct ProfileAvatarView: View {
     let initials: String
     var size: CGFloat = 120
     var isEditable: Bool = false
+    /// SF Symbol name used for the badge overlay when `isEditable` is true.
+    /// Defaults to "camera.fill"; pass "qrcode" on the profile page avatar.
+    var badgeIcon: String = "camera.fill"
 
     // MARK: - Layout constants
 
@@ -74,7 +77,7 @@ struct ProfileAvatarView: View {
             Circle()
                 .fill(BlipColor.accentNeutral)
                 .overlay(Circle().stroke(BlipColor.background, lineWidth: Self.strokeWidth))
-            Image(systemName: "camera.fill")
+            Image(systemName: badgeIcon)
                 .font(.system(size: badgeSize * Self.badgeIconRatio, weight: .semibold))
                 .foregroundStyle(BlipColor.accentNeutralOn)
         }

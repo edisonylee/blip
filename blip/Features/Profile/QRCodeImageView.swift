@@ -192,7 +192,7 @@ struct QRCodeCard: View {
 
 // MARK: - Full-screen modal
 
-private struct QRFullScreenView: View {
+struct QRFullScreenView: View {
     let handle: String
     let photoURL: URL?
     let initials: String

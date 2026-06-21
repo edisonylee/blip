@@ -4,6 +4,7 @@ import Foundation
 @MainActor
 final class ArchiveRepository: ObservableObject {
     @Published private(set) var days: [BlipDay] = []
+    @Published private(set) var isLoading = false
     @Published private(set) var lastError: String?
 
     private let db = Firestore.firestore()
@@ -13,6 +14,8 @@ final class ArchiveRepository: ObservableObject {
 
     func startListening(blip: Blip, uid: String) {
         listener?.remove()
+        isLoading = true
+        lastError = nil
         let timezone = TimeZone(identifier: blip.timezoneIdentifier) ?? .current
         let currentDateKey = BlipHour.dateKey(
             for: Date(),
@@ -24,13 +27,14 @@ final class ArchiveRepository: ObservableObject {
             .addSnapshotListener { [weak self] snap, err in
                 Task { @MainActor in
                     guard let self else { return }
+                    self.isLoading = false
                     if let err {
                         self.lastError = err.localizedDescription
                         return
                     }
                     let docs = snap?.documents ?? []
                     self.days = docs.compactMap { Self.decode(doc: $0, uid: uid) }
-                        // Most recent first, current day excluded so it doesn't duplicate today's export.
+                        // Most recent first; current day excluded (today's export is in ExportView).
                         .filter { $0.id != currentDateKey }
                         .sorted { $0.id > $1.id }
                 }

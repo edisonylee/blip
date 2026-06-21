@@ -5,16 +5,19 @@ struct HomeView: View {
     @EnvironmentObject private var repo: BlipRepository
     @EnvironmentObject private var users: UserRepository
     @EnvironmentObject private var deepLinks: DeepLinkRouter
+    @EnvironmentObject private var userDirectory: FirestoreUserDirectory
+
+    /// uid → profile photo URL loaded lazily when blip cards appear.
+    /// Starts empty; CachedAsyncImage fills the gap while loading.
+    @State private var memberPhotoURLs: [String: URL] = [:]
 
     @StateObject private var vm = HomeViewModel()
-    @StateObject private var clipUploader = ClipUploader()
     @StateObject private var requestsVM = RequestsViewModel()
 
     @State private var showPlusMenu = false
     @State private var creationDestination: CreationDestination?
     @State private var path = NavigationPath()
     @State private var pendingCaptureBlip: Blip?
-    @State private var showGlobalCapture = false
     @State private var showReferralShare = false
     @State private var activeTab: Tab = .blips
     @State private var didOpenCameraOnLaunch = false
@@ -135,13 +138,9 @@ struct HomeView: View {
                     CaptureView(blip: blip, onPosted: { pendingCaptureBlip = nil })
                 }
             }
-            .fullScreenCover(isPresented: $showGlobalCapture) {
-                if case .signedIn(let uid) = auth.state {
-                    CaptureGlobalView(uid: uid, uploader: clipUploader,
-                                      onSent: { showGlobalCapture = false })
-                        .environmentObject(repo)
-                }
-            }
+            // CaptureGlobalView removed — home camera now reuses CaptureView
+            // (same landscape experience as the blip group camera). Destination
+            // blip is picked in ReviewView's "send to" section after recording.
         }
         .onChange(of: deepLinks.pending) { _, action in handle(action) }
         .onAppear {
@@ -151,7 +150,7 @@ struct HomeView: View {
             if !didOpenCameraOnLaunch {
                 didOpenCameraOnLaunch = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    showGlobalCapture = true
+                    handleCameraTab()
                 }
             }
         }
@@ -242,11 +241,16 @@ struct HomeView: View {
                 LazyVStack(spacing: 14) {
                     ForEach(repo.blips) { blip in
                         NavigationLink(value: blip) {
-                            BlipCard(title: blip.name,
-                                     cardColor: vm.cardColor(for: blip),
-                                     members: vm.cardMembers(for: blip))
+                            BlipCard(
+                                title:     blip.name,
+                                cardColor: vm.cardColor(for: blip),
+                                members:   vm.cardMembers(for: blip,
+                                                          photoURLs: memberPhotoURLs),
+                                isActive:  blip.isActive()
+                            )
                         }
                         .buttonStyle(.plain)
+                        .task(id: blip.id) { await loadPhotos(for: blip) }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -282,9 +286,47 @@ struct HomeView: View {
         }
     }
 
+    // MARK: - Member photo loader
+
+    /// Fetches profile photo URLs for all members of `blip` that haven't been
+    /// loaded yet.  Results are stored in `memberPhotoURLs` which BlipCard reads.
+    /// Uses FirestoreUserDirectory (same service as Leaderboard/Friends) so data
+    /// comes from the shared `users` collection — no extra listener overhead.
+    private func loadPhotos(for blip: Blip) async {
+        let missing = blip.members.filter { memberPhotoURLs[$0] == nil }
+        guard !missing.isEmpty else { return }
+        await withTaskGroup(of: (String, URL?).self) { group in
+            for uid in missing {
+                group.addTask {
+                    // try? on a throws->Optional function collapses in Swift 5.7+:
+                    // result is BlipUser? not BlipUser??, so avoid double-chaining.
+                    let user = try? await self.userDirectory.fetchUser(uid: uid)
+                    return (uid, user.flatMap { $0.photoURL })
+                }
+            }
+            for await (uid, url) in group {
+                if let url { memberPhotoURLs[uid] = url }
+            }
+        }
+    }
+
     // MARK: - Camera
 
-    private func handleCameraTab() { showGlobalCapture = true }
+    private func handleCameraTab() {
+        // Reuse CaptureView (same as group blip camera) instead of the
+        // now-removed CaptureGlobalView — no redundant duplicate.
+        // Pick the first active blip; fall back to any blip when nothing is
+        // currently in the active window. ReviewView's "send to" picker lets
+        // the user change or add more destinations before posting.
+        let target = repo.blips.first(where: { $0.isActive() })
+                  ?? repo.blips.first
+        if let target {
+            pendingCaptureBlip = target
+        } else {
+            // No blips exist yet — prompt to create one.
+            creationDestination = .create
+        }
+    }
 
     // MARK: - Debug badge
 

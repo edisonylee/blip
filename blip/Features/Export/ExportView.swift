@@ -1,4 +1,5 @@
 import AVKit
+import Photos
 import SwiftUI
 
 /// Preview-then-stitch.
@@ -20,18 +21,20 @@ struct ExportView: View {
     @StateObject private var likes = DayLikesRepository()
 
     @State private var showShare = false
-    /// MP4 downloaded from the stitched URL into the app's tmp directory. We
-    /// share the LOCAL URL, not the remote one — share-sheet extensions
-    /// (Photos save, TikTok, Instagram) need a real file to attach. Sharing the
-    /// remote `https://` URL would only paste a link string.
     @State private var localVideoURL: URL?
-    /// True between entering .ready and finishing the local download. The share
-    /// + Instagram buttons stay disabled until the file is ready locally.
     @State private var isPreparingLocal = false
+    @State private var downloadError: String?
+    @State private var isSavingToPhotos = false
+    @State private var savedToPhotos = false
+    @State private var showPhotoPermissionAlert = false
+
+    /// Hour currently shown in the preview slider. Initialised to the most
+    /// recent hour with clips once the listener fires.
+    @State private var selectedHour: Int = 0
 
     var body: some View {
         ZStack {
-            BlipColor.background.ignoresSafeArea()
+            BlipColor.backgroundGradient.ignoresSafeArea()
 
             switch service.status {
             case .idle:
@@ -48,6 +51,12 @@ struct ExportView: View {
             clips.startListening(blip: blip)
             clips.setBlocklist(moderation.blockedUsers)
         }
+        // Default selectedHour to the latest hour with clips when data arrives
+        .onChange(of: hoursWithClips) { _, hours in
+            if !hours.isEmpty && !hours.contains(selectedHour) {
+                selectedHour = hours.last ?? hours[0]
+            }
+        }
         .onReceive(moderation.$blockedUsers) { clips.setBlocklist($0) }
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -55,68 +64,158 @@ struct ExportView: View {
             }
         }
         .toolbarBackground(BlipColor.background, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        
     }
 
-    // MARK: - Preview
+    // MARK: - Preview (timeline slider design)
 
     private var previewState: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    headerCopy
+            if hoursWithClips.isEmpty {
+                emptyState
+            } else {
+                // ── Hour label + clip count ───────────────────────────────
+                hourHeader
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    .padding(.bottom, 8)
 
-                    if hoursWithClips.isEmpty {
-                        emptyState
-                    } else {
-                        ForEach(hoursWithClips, id: \.self) { hour in
-                            MemberGrid(
-                                blip: blip,
-                                hour: hour,
-                                clipsForHour: clips.clipsByHour[hour] ?? [],
-                                currentUid: currentUid,
-                                isCurrentHour: false,  // preview: render every hour as past-style
-                                onRecord: {},
-                                onInvite: {},
-                                isAuthor: { _ in false },
-                                onDelete: { _ in },
-                                onEditCaption: { _ in },
-                                showsOpenSeats: false
-                            )
-                        }
+                // ── Swipeable MemberGrid (one hour at a time) ─────────────
+                // TabView page style lets the user swipe between hours;
+                // the HourSlider below stays in sync via $selectedHour.
+                TabView(selection: $selectedHour) {
+                    ForEach(hoursWithClips, id: \.self) { hour in
+                        MemberGrid(
+                            blip: blip,
+                            hour: hour,
+                            clipsForHour: clips.clipsByHour[hour] ?? [],
+                            currentUid: currentUid,
+                            isCurrentHour: false,
+                            onRecord: {},
+                            onInvite: {},
+                            isAuthor: { _ in false },
+                            onDelete: { _ in },
+                            onEditCaption: { _ in },
+                            showsOpenSeats: false
+                        )
+                        .padding(.horizontal, 16)
+                        .tag(hour)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 120)  // room for sticky CTA
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .animation(.spring(response: 0.38, dampingFraction: 0.8), value: selectedHour)
+
+                // ── Timeline slider ───────────────────────────────────────
+                VStack(spacing: 6) {
+                    HourSlider(
+                        hours: hoursWithClips,
+                        currentHour: currentHour,
+                        selectedHour: $selectedHour
+                    )
+                    .padding(.horizontal, 20)
+
+                    // Prev / next hour quick-tap buttons
+                    HStack {
+                        Button {
+                            if let idx = hoursWithClips.firstIndex(of: selectedHour),
+                               idx > 0 {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    selectedHour = hoursWithClips[idx - 1]
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(canGoPrev ? BlipColor.textSecondary : BlipColor.border)
+                        }
+                        .disabled(!canGoPrev)
+
+                        Spacer()
+
+                        // Hour range label
+                        Text("\(hoursWithClips.count) hour\(hoursWithClips.count == 1 ? "" : "s") recorded today")
+                            .font(.blip(size: 11))
+                            .foregroundStyle(BlipColor.textTertiary)
+
+                        Spacer()
+
+                        Button {
+                            if let idx = hoursWithClips.firstIndex(of: selectedHour),
+                               idx < hoursWithClips.count - 1 {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    selectedHour = hoursWithClips[idx + 1]
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(canGoNext ? BlipColor.textSecondary : BlipColor.border)
+                        }
+                        .disabled(!canGoNext)
+                    }
+                    .padding(.horizontal, 20)
+                }
+                .padding(.vertical, 12)
+                .background(BlipColor.surface.opacity(0.7))
+                .overlay(alignment: .top) {
+                    Rectangle().fill(BlipColor.border).frame(height: 0.5)
+                }
             }
 
+            // ── Stitch CTA ────────────────────────────────────────────────
             stitchCTABar
         }
     }
 
-    private var headerCopy: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("today, stitched")
-                .font(BlipTypography.title)
-                .foregroundStyle(BlipColor.textPrimary)
-            Text("preview the cut, then stitch.")
-                .font(BlipTypography.caption)
-                .foregroundStyle(BlipColor.textSecondary)
+    // MARK: - Hour header
+
+    private var hourHeader: some View {
+        HStack(alignment: .bottom) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(hourLabel(for: selectedHour))
+                    .font(.system(size: 28, weight: .black, design: .rounded))
+                    .foregroundStyle(BlipColor.textPrimary)
+                    .contentTransition(.numericText())
+                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedHour)
+
+                let clipsThisHour = clips.clipsByHour[selectedHour]?.count ?? 0
+                Text("\(clipsThisHour) clip\(clipsThisHour == 1 ? "" : "s") recorded")
+                    .font(.blip(size: 13))
+                    .foregroundStyle(BlipColor.textTertiary)
+                    .contentTransition(.numericText())
+                    .animation(.spring(response: 0.35), value: selectedHour)
+            }
+
+            Spacer()
+
+            // Dot indicator: which hour in the sequence
+            if hoursWithClips.count > 1,
+               let idx = hoursWithClips.firstIndex(of: selectedHour) {
+                Text("\(idx + 1) / \(hoursWithClips.count)")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(BlipColor.textTertiary)
+                    .monospacedDigit()
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 4)
     }
 
+    // MARK: - Empty / CTA / helpers
+
     private var emptyState: some View {
-        VStack(spacing: 8) {
-            Spacer().frame(height: 80)
+        VStack(spacing: 12) {
+            Spacer()
+            Image(systemName: "camera.badge.clock")
+                .font(.system(size: 42, weight: .light))
+                .foregroundStyle(BlipColor.textTertiary)
             Text("no clips today yet")
                 .font(BlipTypography.body)
                 .foregroundStyle(BlipColor.textSecondary)
-            Text("record at least one to enable export.")
-                .font(BlipTypography.caption)
+            Text("record a blip this hour to enable export.")
+                .font(.blip(size: 13))
                 .foregroundStyle(BlipColor.textTertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Spacer()
         }
         .frame(maxWidth: .infinity)
     }
@@ -125,22 +224,43 @@ struct ExportView: View {
         Button {
             Task { await service.stitch(blipId: blip.id) }
         } label: {
-            Text(stitchButtonLabel)
-                .font(BlipTypography.body)
-                .tracking(BlipTypography.titleTracking)
-                .foregroundStyle(BlipColor.accentNeutralOn)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(
-                    BlipColor.accentNeutral.opacity(clipCount == 0 ? 0.4 : 1.0),
-                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                )
+            HStack(spacing: 8) {
+                Image(systemName: "film.stack.fill")
+                    .font(.system(size: 16))
+                Text(stitchButtonLabel)
+                    .font(BlipTypography.body)
+                    .tracking(BlipTypography.titleTracking)
+            }
+            .foregroundStyle(BlipColor.accentNeutralOn)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(
+                BlipColor.accentNeutral.opacity(clipCount == 0 ? 0.4 : 1.0),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
         }
         .disabled(clipCount == 0)
         .padding(.horizontal, 16)
         .padding(.bottom, 24)
         .padding(.top, 12)
-        .background(BlipColor.background)
+        .background(BlipColor.surface.opacity(0.7))
+    }
+
+    private var canGoPrev: Bool {
+        (hoursWithClips.firstIndex(of: selectedHour) ?? 0) > 0
+    }
+
+    private var canGoNext: Bool {
+        guard let idx = hoursWithClips.firstIndex(of: selectedHour) else { return false }
+        return idx < hoursWithClips.count - 1
+    }
+
+    private func hourLabel(for hour: Int) -> String {
+        if hour == currentHour { return "now" }
+        var c = DateComponents(); c.hour = hour
+        let date = Calendar.current.date(from: c) ?? Date()
+        let f = DateFormatter(); f.dateFormat = "h a"
+        return f.string(from: date).lowercased()
     }
 
     // MARK: - Other states
@@ -164,18 +284,50 @@ struct ExportView: View {
     @ViewBuilder
     private func readyState(url: URL, dateKey: String, hours: Int) -> some View {
         VStack(spacing: 12) {
-            ExportPlayerView(url: url)
+
+            // ── Stitched video player ──────────────────────────────────
+            ExportPlayerView(url: localVideoURL ?? url)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
 
+            // ── Hour chips row — shows each hour included in the stitch ─
+            // Uses hoursWithClips (from the live clips listener) so the user
+            // can see exactly which hours are represented back-to-back.
+            if !hoursWithClips.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(hoursWithClips, id: \.self) { hour in
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(BlipColor.accent)
+                                    .frame(width: 5, height: 5)
+                                Text(hourLabelShort(for: hour))
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(BlipColor.textPrimary)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(BlipColor.surface,
+                                        in: Capsule())
+                            .overlay(Capsule().stroke(BlipColor.border, lineWidth: 1))
+                        }
+                        // Arrow chips hint at sequential order
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+
+            // ── Meta row ───────────────────────────────────────────────
             HStack(spacing: 8) {
                 Text(dateKey)
                 Text("·")
-                Text("\(hours) hour\(hours == 1 ? "" : "s")")
+                Text("\(hours) hour\(hours == 1 ? "" : "s") stitched")
                 if isPreparingLocal {
                     Text("·")
-                    Text("preparing…")
+                    ProgressView().scaleEffect(0.6).tint(BlipColor.accent)
+                    Text("processing…")
                 }
                 Spacer()
                 HeartButton(
@@ -189,99 +341,443 @@ struct ExportView: View {
             .foregroundStyle(BlipColor.textTertiary)
             .padding(.horizontal, 16)
 
-            HStack(spacing: 10) {
-                shareButton
-                if InstagramStoryShare.isAvailable {
-                    instagramStoryButton
+            // Download error banner
+            if let err = downloadError {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(BlipColor.error)
+                    Text(err)
+                        .font(.blip(size: 12))
+                        .foregroundStyle(BlipColor.error)
+                        .lineLimit(2)
+                    Spacer()
+                    Button { Task { await downloadForSharing(remoteURL: url) } } label: {
+                        Text("retry")
+                            .font(.blip(size: 12, weight: .semibold))
+                            .foregroundStyle(BlipColor.accentNeutral)
+                    }
                 }
-                tikTokShareButton
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(BlipColor.error.opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal, 16)
+            }
+
+            // Action buttons
+            VStack(spacing: 10) {
+                // 1. Save to Camera Roll
+                saveToPhotosButton
+
+                // 2. Share (local .mp4 only — shows TikTok, Instagram, Facebook etc.)
+                shareButton
+
+                // 3. Social quick-access row
+                socialRow
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
         }
-        .task(id: url) { await downloadForSharing(remoteURL: url) }
+        .task(id: url) {
+            downloadError = nil
+            await downloadForSharing(remoteURL: url)
+        }
         .task(id: dateKey) { likes.startListening(blipId: blip.id, dateKey: dateKey) }
+        // IMPORTANT: only pass the local file — remote URL makes social apps
+        // paste a link string instead of uploading the actual video.
         .sheet(isPresented: $showShare) {
-            // Always pass the local file when we have it — that's what unlocks
-            // Save Video / TikTok / etc. Fall back to the remote URL only if
-            // the local download somehow failed (rare; user can still copy link).
-            ShareSheet(activityItems: [localVideoURL ?? url])
+            if let local = localVideoURL {
+                ShareSheet(activityItems: [local])
+            }
+        }
+        .alert("photo library access needed", isPresented: $showPhotoPermissionAlert) {
+            Button("open settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("cancel", role: .cancel) {}
+        } message: {
+            Text("allow blip to add videos to your photo library in Settings.")
         }
     }
+
+    // MARK: - Save to Photos
+
+    private var saveToPhotosButton: some View {
+        Button {
+            Task { await saveToPhotos() }
+        } label: {
+            HStack(spacing: 8) {
+                if isSavingToPhotos {
+                    ProgressView().tint(BlipColor.accentNeutralOn).scaleEffect(0.8)
+                } else if savedToPhotos {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(BlipColor.accentNeutralOn)
+                } else {
+                    Image(systemName: "square.and.arrow.down")
+                        .foregroundStyle(BlipColor.accentNeutralOn)
+                }
+                Text(savedToPhotos ? "saved to photos!" : "save to photos")
+                    .font(BlipTypography.body)
+                    .foregroundStyle(BlipColor.accentNeutralOn)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 13)
+            .background(
+                savedToPhotos
+                    ? Color(red: 0.2, green: 0.78, blue: 0.45)
+                    : BlipColor.accentNeutral.opacity(localVideoURL == nil ? 0.4 : 1.0),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .animation(.spring(response: 0.3), value: savedToPhotos)
+        }
+        .disabled(localVideoURL == nil || isSavingToPhotos || savedToPhotos)
+    }
+
+    private func saveToPhotos() async {
+        guard let local = localVideoURL else { return }
+        isSavingToPhotos = true
+        defer { isSavingToPhotos = false }
+
+        // Check / request permission
+        let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+        if status == .denied || status == .restricted {
+            showPhotoPermissionAlert = true
+            return
+        }
+        if status == .notDetermined {
+            let granted = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard granted == .authorized || granted == .limited else {
+                showPhotoPermissionAlert = true
+                return
+            }
+        }
+
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: local)
+            }
+            savedToPhotos = true
+            // Reset the tick after 3 s so the user can save again if needed
+            Task {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                savedToPhotos = false
+            }
+        } catch {
+            downloadError = "couldn't save to photos: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Share button (local file only)
 
     private var shareButton: some View {
         Button { showShare = true } label: {
-            Label("share", systemImage: "square.and.arrow.up")
-                .font(BlipTypography.body)
-                .tracking(BlipTypography.titleTracking)
-                .foregroundStyle(BlipColor.accentNeutralOn)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(
-                    BlipColor.accentNeutral.opacity(localVideoURL == nil ? 0.4 : 1.0),
-                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                )
+            HStack(spacing: 8) {
+                Image(systemName: "square.and.arrow.up")
+                Text("share video")
+            }
+            .font(BlipTypography.body)
+            .foregroundStyle(localVideoURL != nil ? BlipColor.textPrimary : BlipColor.textTertiary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(
+                localVideoURL != nil
+                    ? BlipColor.surface
+                    : BlipColor.surface.opacity(0.5),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(BlipColor.border, lineWidth: 1)
+            )
         }
         .disabled(localVideoURL == nil)
     }
 
-    private var instagramStoryButton: some View {
-        Button {
-            guard let local = localVideoURL else { return }
-            try? InstagramStoryShare.share(videoFileURL: local)
-        } label: {
-            Image(systemName: "circle.dashed.inset.filled")
-                .font(.body)
-                .foregroundStyle(BlipColor.textPrimary)
-                .frame(width: 44, height: 44)
-                .background(BlipColor.surface, in: Circle())
+    // MARK: - Social quick-access row
+    //
+    // All buttons except Instagram Stories use the iOS Share Sheet with the
+    // LOCAL .mp4 file. When TikTok / Instagram / Facebook are installed they
+    // appear in the system share sheet and receive the actual video file — NOT
+    // a URL link. Instagram Stories uses the direct pasteboard API so it opens
+    // the story camera with the video pre-loaded.
+
+    private var socialRow: some View {
+        HStack(spacing: 0) {
+            // Instagram Stories — pasteboard API (opens story camera directly)
+            socialPill(
+                label: "IG Story",
+                icon: "camera.viewfinder",
+                tint: Color(hex: 0xE1306C),
+                isReady: localVideoURL != nil
+            ) {
+                guard let local = localVideoURL else { return }
+                try? InstagramStoryShare.share(videoFileURL: local)
+            }
+
+            socialDivider
+
+            // TikTok — system share sheet (TikTok appears if installed)
+            socialPill(
+                label: "TikTok",
+                icon: "music.note",
+                tint: Color.black,
+                isReady: localVideoURL != nil
+            ) { showShare = true }
+
+            socialDivider
+
+            // Instagram Feed / Reels — system share sheet
+            socialPill(
+                label: "Instagram",
+                icon: "photo.on.rectangle.angled",
+                tint: Color(hex: 0xE1306C),
+                isReady: localVideoURL != nil
+            ) { showShare = true }
+
+            socialDivider
+
+            // Facebook / Meta — system share sheet
+            socialPill(
+                label: "Facebook",
+                icon: "person.2.wave.2.fill",
+                tint: Color(hex: 0x1877F2),
+                isReady: localVideoURL != nil
+            ) { showShare = true }
         }
-        .disabled(localVideoURL == nil)
-        .accessibilityLabel("Share to Instagram story")
+        .background(BlipColor.surface,
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(BlipColor.border, lineWidth: 1)
+        )
     }
 
-    /// TikTok share — virality is the #1 product priority (CLAUDE.md). Opens
-    /// the iOS share sheet, which surfaces TikTok automatically when the app is
-    /// installed and the activity item is a real `.mp4` file. The dedicated
-    /// button gives the destination prominence the generic share button doesn't.
-    private var tikTokShareButton: some View {
-        Button { showShare = true } label: {
-            Image(systemName: "music.note")
-                .font(.body)
-                .foregroundStyle(BlipColor.textPrimary)
-                .frame(width: 44, height: 44)
-                .background(BlipColor.surface, in: Circle())
+    private func socialPill(
+        label: String,
+        icon: String,
+        tint: Color,
+        isReady: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(isReady ? tint : BlipColor.textTertiary)
+                Text(label)
+                    .font(.blip(size: 10, weight: .medium))
+                    .foregroundStyle(isReady ? BlipColor.textSecondary : BlipColor.textTertiary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
         }
-        .disabled(localVideoURL == nil)
-        .accessibilityLabel("Share to TikTok")
+        .buttonStyle(.plain)
+        .disabled(!isReady)
     }
 
-    /// Pull the stitched MP4 to a tmp file so the share sheet can attach it
-    /// as a real video. Idempotent for the same URL — re-entering .ready with
-    /// an unchanged URL skips the download.
+    private var socialDivider: some View {
+        Rectangle()
+            .fill(BlipColor.border)
+            .frame(width: 0.5)
+            .padding(.vertical, 8)
+    }
+
+    /// Downloads the stitched MP4, burns hour-label chips into each segment,
+    /// then sets localVideoURL to the labeled file ready for sharing / saving.
     private func downloadForSharing(remoteURL: URL) async {
-        // Already have it for this URL? Bail. (.task(id:) already filters most
-        // duplicates, but being defensive is cheap.)
-        if let existing = localVideoURL,
-           existing.lastPathComponent.contains(remoteURL.lastPathComponent) {
-            return
-        }
+        if localVideoURL != nil { return }
+
         isPreparingLocal = true
+        downloadError = nil
         defer { isPreparingLocal = false }
+
         do {
-            let (tmpURL, _) = try await URLSession.shared.download(from: remoteURL)
-            // URLSession picks an opaque tmp name; rename so iOS detects the
-            // .mp4 extension and shows the right share-sheet affordances.
-            let dest = FileManager.default.temporaryDirectory
-                .appendingPathComponent("blip-export-\(UUID().uuidString).mp4")
-            try? FileManager.default.removeItem(at: dest)
-            try FileManager.default.moveItem(at: tmpURL, to: dest)
-            localVideoURL = dest
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest  = 120
+            config.timeoutIntervalForResource = 300
+            let session = URLSession(configuration: config)
+
+            let (tmpURL, response) = try await session.download(from: remoteURL)
+
+            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+                throw URLError(.badServerResponse, userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "server returned \(http.statusCode) — export link may have expired, try re-stitching."
+                ])
+            }
+
+            let raw = FileManager.default.temporaryDirectory
+                .appendingPathComponent("blip-export-raw-\(UUID().uuidString).mp4")
+            try? FileManager.default.removeItem(at: raw)
+            try FileManager.default.moveItem(at: tmpURL, to: raw)
+
+            // Burn hour chips into the video then set the labeled file.
+            let labeled = await burnHourLabels(into: raw)
+            localVideoURL = labeled
         } catch {
-            // Leave localVideoURL nil — share button stays disabled, user can
-            // re-stitch. Could surface a toast here later.
             localVideoURL = nil
+            downloadError = "download failed — \(error.localizedDescription)"
         }
+    }
+
+    // MARK: - Hour label text overlay (client-side, AVFoundation)
+
+    /// Adds a floating hour-label chip (e.g. "6 AM", "7 AM") to each timed
+    /// segment of the stitched video using CoreAnimation text layers baked in
+    /// via AVVideoCompositionCoreAnimationTool.
+    ///
+    /// Returns the labeled file URL, or the original on any failure so the
+    /// user always has a usable video.
+    private func burnHourLabels(into sourceURL: URL) async -> URL {
+        let hours = hoursWithClips
+        guard !hours.isEmpty else { return sourceURL }
+
+        do {
+            let asset = AVURLAsset(url: sourceURL)
+
+            // Load required properties
+            let tracks   = try await asset.loadTracks(withMediaType: .video)
+            guard let vt = tracks.first else { return sourceURL }
+            let duration    = try await asset.load(.duration)
+            let naturalSize = try await vt.load(.naturalSize)
+            let transform   = try await vt.load(.preferredTransform)
+
+            let totalSec = CMTimeGetSeconds(duration)
+            guard totalSec > 0 else { return sourceURL }
+
+            // Resolve the actual display dimensions (accounts for rotation).
+            let t = transform
+            let swapped = (t.a == 0 && t.d == 0)
+            let renderSize = swapped
+                ? CGSize(width: naturalSize.height, height: naturalSize.width)
+                : naturalSize
+
+            let secPerHour = totalSec / Double(hours.count)
+
+            // ── Build AVMutableComposition ─────────────────────────────
+            let comp = AVMutableComposition()
+            let cvt  = comp.addMutableTrack(withMediaType: .video,
+                                             preferredTrackID: kCMPersistentTrackID_Invalid)!
+            try cvt.insertTimeRange(CMTimeRange(start: .zero, duration: duration),
+                                    of: vt, at: .zero)
+            cvt.preferredTransform = transform
+
+            let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+            if let at = audioTracks.first {
+                let cat = comp.addMutableTrack(withMediaType: .audio,
+                                               preferredTrackID: kCMPersistentTrackID_Invalid)
+                try cat?.insertTimeRange(CMTimeRange(start: .zero, duration: duration),
+                                         of: at, at: .zero)
+            }
+
+            // ── Build CoreAnimation layer tree ─────────────────────────
+            // isGeometryFlipped = true so y=0 is the TOP (UIKit convention).
+            let parentLayer = CALayer()
+            parentLayer.frame = CGRect(origin: .zero, size: renderSize)
+            parentLayer.isGeometryFlipped = true
+
+            let videoLayer = CALayer()
+            videoLayer.frame = parentLayer.frame
+            parentLayer.addSublayer(videoLayer)
+
+            let chipH: CGFloat    = max(28, renderSize.height * 0.055)
+            let fontSize: CGFloat = chipH * 0.52
+            let pad: CGFloat      = renderSize.width * 0.035
+            let vPad: CGFloat     = renderSize.height * 0.03
+
+            for (idx, hour) in hours.enumerated() {
+                let label   = hourLabelShort(for: hour)
+                let chipW   = CGFloat(label.count) * fontSize * 0.7 + pad * 2.2
+
+                // Semi-transparent dark capsule
+                let chipLayer = CALayer()
+                chipLayer.backgroundColor = UIColor.black.withAlphaComponent(0.55).cgColor
+                chipLayer.cornerRadius    = chipH / 2
+                chipLayer.frame = CGRect(
+                    x: renderSize.width - chipW - pad,
+                    y: vPad,                            // isGeometryFlipped → vPad from top
+                    width: chipW,
+                    height: chipH
+                )
+
+                // White bold label
+                let textLayer = CATextLayer()
+                textLayer.string         = label
+                textLayer.fontSize       = fontSize
+                textLayer.foregroundColor = UIColor.white.cgColor
+                textLayer.alignmentMode  = .center
+                textLayer.contentsScale  = UIScreen.main.scale
+                textLayer.frame          = chipLayer.bounds
+                chipLayer.addSublayer(textLayer)
+
+                // Fade in/out during this hour's time window
+                let segStart = Double(idx) * secPerHour
+                let segEnd   = Double(idx + 1) * secPerHour
+                let fadeT    = min(0.25, secPerHour * 0.12)
+
+                let anim = CAKeyframeAnimation(keyPath: "opacity")
+                anim.keyTimes = [
+                    0, segStart, segStart + fadeT,
+                    segEnd - fadeT, segEnd, totalSec
+                ].map { NSNumber(value: $0 / totalSec) }
+                anim.values     = [0, 0, 1, 1, 0, 0]
+                anim.duration   = totalSec
+                anim.fillMode   = .forwards
+                anim.isRemovedOnCompletion = false
+                chipLayer.add(anim, forKey: "opacity-\(idx)")
+                chipLayer.opacity = 0
+
+                parentLayer.addSublayer(chipLayer)
+            }
+
+            // ── Video composition with animation tool ──────────────────
+            let vc = AVMutableVideoComposition()
+            vc.renderSize    = renderSize
+            vc.frameDuration = CMTime(value: 1, timescale: 30)
+            vc.animationTool = AVVideoCompositionCoreAnimationTool(
+                postProcessingAsVideoLayer: videoLayer,
+                in: parentLayer
+            )
+
+            let instr  = AVMutableVideoCompositionInstruction()
+            instr.timeRange = CMTimeRange(start: .zero, duration: duration)
+            let li = AVMutableVideoCompositionLayerInstruction(assetTrack: cvt)
+            instr.layerInstructions = [li]
+            vc.instructions = [instr]
+
+            // ── Export ─────────────────────────────────────────────────
+            let out = FileManager.default.temporaryDirectory
+                .appendingPathComponent("blip-export-labeled-\(UUID().uuidString).mp4")
+            try? FileManager.default.removeItem(at: out)
+
+            guard let exporter = AVAssetExportSession(
+                asset: comp,
+                presetName: AVAssetExportPresetHighestQuality
+            ) else { return sourceURL }
+
+            exporter.outputURL              = out
+            exporter.outputFileType         = .mp4
+            exporter.videoComposition       = vc
+            exporter.shouldOptimizeForNetworkUse = true
+
+            await exporter.export()
+            return exporter.status == .completed ? out : sourceURL
+
+        } catch {
+            return sourceURL   // silent fallback — user still gets the raw video
+        }
+    }
+
+    /// Short uppercase hour label used both in the UI chips and in the video overlay.
+    private func hourLabelShort(for hour: Int) -> String {
+        if hour == currentHour { return "NOW" }
+        var c = DateComponents(); c.hour = hour
+        let date = Calendar.current.date(from: c) ?? Date()
+        let f = DateFormatter(); f.dateFormat = "h a"
+        return f.string(from: date).uppercased()
     }
 
     @ViewBuilder
@@ -303,6 +799,10 @@ struct ExportView: View {
     }
 
     // MARK: - Derived
+
+    private var currentHour: Int {
+        BlipHour.currentHour(in: blip.timezoneIdentifier)
+    }
 
     private var currentUid: String? {
         if case .signedIn(let uid) = auth.state { return uid }
