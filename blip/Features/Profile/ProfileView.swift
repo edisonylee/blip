@@ -42,6 +42,7 @@ private struct ProfileContent: View {
     // MARK: - Sheet / navigation state
 
     @State private var showEditProfile    = false   // combined photo + handle sheet
+    @State private var showLeaderboard    = false
     @State private var showShareSheet     = false
     @State private var showQR             = false
     @State private var showQuietHours     = false
@@ -102,6 +103,15 @@ private struct ProfileContent: View {
                             menuDivider
                             qrMenuRow(handle: handle)
                         }
+                    }
+
+                    // ── Stats / rankings section ──────────────────────────
+                    menuCard {
+                        menuRow(
+                            icon: "trophy.fill",
+                            iconTint: Color(hex: 0xF59E0B),
+                            title: "leaderboard"
+                        ) { showLeaderboard = true }
                     }
 
                     // ── Preferences section ───────────────────────────────
@@ -173,6 +183,9 @@ private struct ProfileContent: View {
         .task { rankVM.startListening() }
         .onDisappear { rankVM.stopListening() }
         .sheet(isPresented: $showEditProfile) { EditProfileSheet(uid: uid) }
+        .sheet(isPresented: $showLeaderboard) {
+            NavigationStack { LeaderboardView() }
+        }
         .sheet(isPresented: $showShareSheet)  {
             ShareSheet(activityItems: vm.shareItems(handle: profile?.handle))
         }
