@@ -616,6 +616,10 @@ struct ExportView: View {
 
     // MARK: - Derived
 
+    private var currentHour: Int {
+        BlipHour.currentHour(in: blip.timezoneIdentifier)
+    }
+
     private var currentUid: String? {
         if case .signedIn(let uid) = auth.state { return uid }
         return nil
