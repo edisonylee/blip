@@ -87,17 +87,11 @@ private struct ProfileContent: View {
 
                     // ── Account section ───────────────────────────────────
                     menuCard {
-                        menuRow(
-                            icon: "pencil", iconTint: BlipColor.accentNeutral,
-                            title: "edit profile"
-                        ) { showEditProfile = true }
+                        menuRow(icon: "pencil", title: "edit profile") { showEditProfile = true }
 
                         menuDivider
 
-                        menuRow(
-                            icon: "square.and.arrow.up", iconTint: BlipColor.accentNeutral,
-                            title: "share profile"
-                        ) { showShareSheet = true }
+                        menuRow(icon: "square.and.arrow.up", title: "share profile") { showShareSheet = true }
 
                         if let handle = profile?.handle, !handle.isEmpty {
                             menuDivider
@@ -107,48 +101,31 @@ private struct ProfileContent: View {
 
                     // ── Stats / rankings section ──────────────────────────
                     menuCard {
-                        menuRow(
-                            icon: "trophy.fill",
-                            iconTint: Color(hex: 0xF59E0B),
-                            title: "leaderboard"
-                        ) { showLeaderboard = true }
+                        menuRow(icon: "trophy.fill", title: "leaderboard") { showLeaderboard = true }
                     }
 
                     // ── Preferences section ───────────────────────────────
                     menuCard {
-                        menuRow(
-                            icon: "moon.zzz.fill", iconTint: Color(hex: 0x6366F1),
-                            title: "quiet hours",
-                            trailing: quietHoursLabel
-                        ) { showQuietHours = true }
+                        menuRow(icon: "moon.zzz.fill", title: "quiet hours",
+                                trailing: quietHoursLabel) { showQuietHours = true }
 
                         menuDivider
 
-                        menuRow(
-                            icon: "lock.shield.fill", iconTint: Color(hex: 0x0891B2),
-                            title: "privacy policy"
-                        ) { showPrivacyPolicy = true }
+                        menuRow(icon: "lock.shield.fill", title: "privacy policy") { showPrivacyPolicy = true }
                     }
 
                     // ── Danger zone ───────────────────────────────────────
                     menuCard {
-                        menuRow(
-                            icon: "rectangle.portrait.and.arrow.right",
-                            iconTint: BlipColor.textSecondary,
-                            title: "sign out",
-                            textTint: BlipColor.textPrimary,
-                            showChevron: false
-                        ) { auth.signOut() }
+                        menuRow(icon: "rectangle.portrait.and.arrow.right",
+                                title: "sign out",
+                                showChevron: false) { auth.signOut() }
 
                         menuDivider
 
-                        menuRow(
-                            icon: "trash.fill",
-                            iconTint: BlipColor.error,
-                            title: "delete account",
-                            textTint: BlipColor.error,
-                            showChevron: false
-                        ) { showDeleteConfirm = true }
+                        menuRow(icon: "trash.fill",
+                                title: "delete account",
+                                textTint: BlipColor.error,
+                                showChevron: false) { showDeleteConfirm = true }
                         .disabled(isDeleting)
                     }
 
@@ -300,7 +277,7 @@ private struct ProfileContent: View {
         let initials = QRCodeCard.initials(from: handle)
         return Button { showQR = true } label: {
             HStack(spacing: 12) {
-                iconBox(systemName: "qrcode", tint: Color(hex: 0x374151))
+                iconBox(systemName: "qrcode", tint: BlipColor.textSecondary)
                 Text("my QR code")
                     .font(.blip(size: 15, weight: .medium))
                     .foregroundStyle(BlipColor.textPrimary)
@@ -340,7 +317,6 @@ private struct ProfileContent: View {
 
     private func menuRow(
         icon: String,
-        iconTint: Color,
         title: String,
         trailing: String? = nil,
         textTint: Color = BlipColor.textPrimary,
@@ -349,7 +325,7 @@ private struct ProfileContent: View {
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                iconBox(systemName: icon, tint: iconTint)
+                iconBox(systemName: icon, tint: BlipColor.textSecondary)
                 Text(title)
                     .font(.blip(size: 15, weight: .medium))
                     .foregroundStyle(textTint)
@@ -379,14 +355,11 @@ private struct ProfileContent: View {
     // MARK: - Icon box (iOS Settings style)
 
     private func iconBox(systemName: String, tint: Color) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(tint.opacity(0.13))
-                .frame(width: 32, height: 32)
-            Image(systemName: systemName)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(tint)
-        }
+        // No background box — plain icon with a single shared tint
+        Image(systemName: systemName)
+            .font(.system(size: 16, weight: .medium))
+            .foregroundStyle(BlipColor.textSecondary)
+            .frame(width: 28, height: 28)
     }
 
     private var menuDivider: some View {
