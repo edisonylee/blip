@@ -1,7 +1,7 @@
 import PhotosUI
 import SwiftUI
 
-// MARK: - Shell (resolves uid from auth)
+// MARK: - Shell
 
 struct ProfileView: View {
     @EnvironmentObject private var auth: AuthService
@@ -18,7 +18,7 @@ struct ProfileView: View {
                     userDirectory: userDirectory
                 )
             } else {
-                BlipColor.background.ignoresSafeArea()
+                BlipColor.backgroundGradient.ignoresSafeArea()
             }
         }
     }
@@ -33,22 +33,28 @@ struct ProfileView: View {
 
 private struct ProfileContent: View {
 
-    // MARK: Dependencies / VMs
+    // MARK: - Dependencies
 
+    @EnvironmentObject private var auth: AuthService
     @EnvironmentObject private var users: UserRepository
     @StateObject private var vm: ProfileViewModel
     @StateObject private var rankVM: LeaderboardViewModel
 
-    // MARK: State
+    // MARK: - Sheet / navigation state
 
-    @State private var showHandleSheet = false
-    @State private var showSettings = false
-    @State private var showShareSheet = false
+    @State private var showHandleSheet    = false
+    @State private var showShareSheet     = false
+    @State private var showQR             = false
+    @State private var showQuietHours     = false
+    @State private var showPrivacyPolicy  = false
+    @State private var showDeleteConfirm  = false
+    @State private var isDeleting         = false
+    @State private var deleteError: String?
     @State private var pickerItem: PhotosPickerItem?
 
     private let uid: String
 
-    // MARK: Init
+    // MARK: - Init
 
     init(
         uid: String,
@@ -65,43 +71,142 @@ private struct ProfileContent: View {
         _rankVM = StateObject(wrappedValue: LeaderboardViewModel(userDirectory: userDirectory))
     }
 
-    // MARK: Body
+    // MARK: - Body
 
     var body: some View {
         ZStack {
             BlipColor.backgroundGradient.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                topBar
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
 
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 24) {
-                        identitySection
-                        statsStrip
+                    // ── Avatar + handle ───────────────────────────────────
+                    identitySection
+
+                    // ── Stats strip ───────────────────────────────────────
+                    statsStrip
+
+                    // ── Account section ───────────────────────────────────
+                    menuCard {
+                        menuRow(
+                            icon: "pencil", iconTint: BlipColor.accentNeutral,
+                            title: "edit profile"
+                        ) { showHandleSheet = true }
+
+                        menuDivider
+
+                        menuRow(
+                            icon: "square.and.arrow.up", iconTint: BlipColor.accentNeutral,
+                            title: "share profile"
+                        ) { showShareSheet = true }
+
                         if let handle = profile?.handle, !handle.isEmpty {
-                            QRCodeCard(handle: handle, photoURL: profile?.photoURL)
-                        }
-                        actionRow
-                        if let err = vm.pendingError {
-                            Text(err)
-                                .font(BlipTypography.caption)
-                                .foregroundStyle(BlipColor.error)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 20)
+                            menuDivider
+                            qrMenuRow(handle: handle)
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 20)
-                    .padding(.bottom, 40)
+
+                    // ── Preferences section ───────────────────────────────
+                    menuCard {
+                        menuRow(
+                            icon: "moon.zzz.fill", iconTint: Color(hex: 0x6366F1),
+                            title: "quiet hours",
+                            trailing: quietHoursLabel
+                        ) { showQuietHours = true }
+
+                        menuDivider
+
+                        menuRow(
+                            icon: "lock.shield.fill", iconTint: Color(hex: 0x0891B2),
+                            title: "privacy policy"
+                        ) { showPrivacyPolicy = true }
+                    }
+
+                    // ── Danger zone ───────────────────────────────────────
+                    menuCard {
+                        menuRow(
+                            icon: "rectangle.portrait.and.arrow.right",
+                            iconTint: BlipColor.textSecondary,
+                            title: "sign out",
+                            textTint: BlipColor.textPrimary,
+                            showChevron: false
+                        ) { auth.signOut() }
+
+                        menuDivider
+
+                        menuRow(
+                            icon: "trash.fill",
+                            iconTint: BlipColor.error,
+                            title: "delete account",
+                            textTint: BlipColor.error,
+                            showChevron: false
+                        ) { showDeleteConfirm = true }
+                        .disabled(isDeleting)
+                    }
+
+                    if let deleteError {
+                        Text(deleteError)
+                            .font(.blip(size: 12))
+                            .foregroundStyle(BlipColor.error)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    if let err = vm.pendingError {
+                        Text(err)
+                            .font(.blip(size: 12))
+                            .foregroundStyle(BlipColor.error)
+                            .multilineTextAlignment(.center)
+                    }
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 36)   // extra top since there's no top bar
+                .padding(.bottom, 48)
+            }
+
+            // Full-screen spinner while deleting
+            if isDeleting {
+                BlipColor.backgroundGradient.opacity(0.7).ignoresSafeArea()
+                ProgressView("deleting…")
+                    .controlSize(.large)
+                    .padding(28)
+                    .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 16))
             }
         }
         .task { rankVM.startListening() }
         .onDisappear { rankVM.stopListening() }
-        .sheet(isPresented: $showHandleSheet) { EditHandleSheet() }
-        .sheet(isPresented: $showSettings)    { SettingsView() }
-        .sheet(isPresented: $showShareSheet) {
+        .sheet(isPresented: $showHandleSheet)   { EditHandleSheet() }
+        .sheet(isPresented: $showShareSheet)    {
             ShareSheet(activityItems: vm.shareItems(handle: profile?.handle))
+        }
+        .sheet(isPresented: $showQR) {
+            if let handle = profile?.handle, !handle.isEmpty {
+                QRFullScreenView(
+                    handle: handle,
+                    photoURL: profile?.photoURL,
+                    initials: QRCodeCard.initials(from: handle)
+                )
+            }
+        }
+        .sheet(isPresented: $showQuietHours) {
+            QuietHoursSheet(
+                start: profile?.quietHoursStart ?? 23,
+                end:   profile?.quietHoursEnd   ?? 7
+            )
+        }
+        .sheet(isPresented: $showPrivacyPolicy) {
+            NavigationStack { PrivacyPolicyView() }
+        }
+        .confirmationDialog(
+            "delete your blip account?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("delete forever", role: .destructive) {
+                Task { await runDelete() }
+            }
+            Button("cancel", role: .cancel) {}
+        } message: {
+            Text("this permanently removes your account, all your clips, and your membership in every blip. it can't be undone.")
         }
         .onChange(of: pickerItem) { _, newItem in
             guard let newItem else { return }
@@ -115,42 +220,11 @@ private struct ProfileContent: View {
         }
     }
 
-    // MARK: - Top bar
-
-    private var topBar: some View {
-        HStack(spacing: 4) {
-            Text(profile?.handle.map { "@\($0)" } ?? "profile")
-                .font(.blip(size: 17, weight: .semibold))
-                .foregroundStyle(BlipColor.textPrimary)
-                .lineLimit(1)
-
-            Spacer()
-
-            Button { showShareSheet = true } label: {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(BlipColor.textSecondary)
-                    .frame(width: 40, height: 40)
-            }
-            .accessibilityLabel("share profile")
-
-            Button { showSettings = true } label: {
-                Image(systemName: "line.3.horizontal")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(BlipColor.textSecondary)
-                    .frame(width: 40, height: 40)
-            }
-            .accessibilityLabel("settings")
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-    }
-
-    // MARK: - Identity (avatar + handle + metadata)
+    // MARK: - Identity section (avatar + handle + date)
 
     private var identitySection: some View {
         VStack(spacing: 14) {
-            // Avatar — tap to pick photo
+            // Avatar — tap to change photo
             PhotosPicker(selection: $pickerItem, matching: .images, photoLibrary: .shared()) {
                 ZStack {
                     ProfileAvatarView(
@@ -163,14 +237,15 @@ private struct ProfileContent: View {
                         Circle()
                             .fill(BlipColor.background.opacity(0.55))
                             .frame(width: 96, height: 96)
-                        ProgressView().tint(BlipColor.textPrimary)
+                        ProgressView().tint(BlipColor.accentNeutral)
                     }
                 }
             }
             .buttonStyle(.plain)
             .disabled(vm.isUploadingPhoto)
+            .accessibilityLabel("change profile photo")
 
-            // Handle
+            // Handle (tap to edit)
             Button { showHandleSheet = true } label: {
                 Text(handleDisplay)
                     .font(.blip(size: 22, weight: .bold))
@@ -180,11 +255,10 @@ private struct ProfileContent: View {
             .buttonStyle(.plain)
 
             // Metadata
-            VStack(spacing: 4) {
+            VStack(spacing: 3) {
                 Text(memberSinceText)
                     .font(.blip(size: 13))
                     .foregroundStyle(BlipColor.textTertiary)
-
                 if let school = profile?.school {
                     Text(school)
                         .font(.blip(size: 13))
@@ -200,14 +274,15 @@ private struct ProfileContent: View {
     private var statsStrip: some View {
         HStack(spacing: 0) {
             statPill(value: "\(profile?.totalClips ?? 0)", label: "clips")
-            Divider().frame(height: 28).background(BlipColor.border)
+            Divider().frame(height: 28)
             statPill(value: streakValue, label: "streak")
-            Divider().frame(height: 28).background(BlipColor.border)
+            Divider().frame(height: 28)
             statPill(value: "\(profile?.friendsCount ?? 0)", label: "friends")
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
         .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .shadow(color: .black.opacity(0.04), radius: 6, x: 0, y: 2)
     }
 
     private func statPill(value: String, label: String) -> some View {
@@ -222,27 +297,122 @@ private struct ProfileContent: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Actions
+    // MARK: - QR menu row (mini thumbnail on right)
 
-    private var actionRow: some View {
-        HStack(spacing: 10) {
-            Button("edit profile") { showHandleSheet = true }
-                .blipSecondary()
-            Button("share") { showShareSheet = true }
-                .blipSecondary()
+    private func qrMenuRow(handle: String) -> some View {
+        let initials = QRCodeCard.initials(from: handle)
+        return Button { showQR = true } label: {
+            HStack(spacing: 12) {
+                iconBox(systemName: "qrcode", tint: Color(hex: 0x374151))
+                Text("my QR code")
+                    .font(.blip(size: 15, weight: .medium))
+                    .foregroundStyle(BlipColor.textPrimary)
+                Spacer()
+                // Mini QR preview — no labels, just the code
+                QRCodeImageView(
+                    data: "blip://user/\(handle)",
+                    centerURL: profile?.photoURL,
+                    centerInitials: initials,
+                    size: 38
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .shadow(color: .black.opacity(0.08), radius: 3, x: 0, y: 1)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(BlipColor.textTertiary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Menu card container
+
+    @ViewBuilder
+    private func menuCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 0) {
+            content()
+        }
+        .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.04), radius: 6, x: 0, y: 2)
+    }
+
+    // MARK: - Menu row
+
+    private func menuRow(
+        icon: String,
+        iconTint: Color,
+        title: String,
+        trailing: String? = nil,
+        textTint: Color = BlipColor.textPrimary,
+        showChevron: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                iconBox(systemName: icon, tint: iconTint)
+                Text(title)
+                    .font(.blip(size: 15, weight: .medium))
+                    .foregroundStyle(textTint)
+                Spacer()
+                if let trailing {
+                    Text(trailing)
+                        .font(.blip(size: 13))
+                        .foregroundStyle(BlipColor.textTertiary)
+                }
+                if showChevron {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(BlipColor.textTertiary)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Icon box (iOS Settings style)
+
+    private func iconBox(systemName: String, tint: Color) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(tint.opacity(0.13))
+                .frame(width: 32, height: 32)
+            Image(systemName: systemName)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(tint)
         }
     }
 
-    // MARK: - Helpers
+    private var menuDivider: some View {
+        Divider()
+            .padding(.leading, 60) // indent to align with text, past icon
+    }
+
+    // MARK: - Delete
+
+    private func runDelete() async {
+        isDeleting = true
+        deleteError = nil
+        do {
+            try await auth.deleteAccount()
+        } catch {
+            deleteError = error.localizedDescription
+        }
+        isDeleting = false
+    }
+
+    // MARK: - Computed helpers
 
     private var profile: BlipUser? { users.profile }
     private var hasHandle: Bool { !(profile?.handle ?? "").isEmpty }
 
     private var avatarInitials: String {
         guard let h = profile?.handle, !h.isEmpty else { return "?" }
-        // Reuse the same logic as QRCodeCard.initials(from:) for consistency:
-        // split on _ and . to get word initials ("john_doe" → "JD"),
-        // or take the first two letters of single-word handles ("johndoe" → "JO").
         return QRCodeCard.initials(from: h)
     }
 
@@ -261,4 +431,18 @@ private struct ProfileContent: View {
         let n = profile?.streakCurrent ?? 0
         return n == 1 ? "1 day" : "\(n)d"
     }
+
+    private var quietHoursLabel: String {
+        let s = profile?.quietHoursStart ?? 23
+        let e = profile?.quietHoursEnd   ?? 7
+        return "\(formatHour(s)) – \(formatHour(e))"
+    }
+}
+
+// MARK: - Hour formatter (shared with QuietHoursSheet)
+
+func formatHour(_ h: Int) -> String {
+    let n = ((h % 24) + 24) % 24
+    let h12 = n % 12 == 0 ? 12 : n % 12
+    return "\(h12)\(n < 12 ? "am" : "pm")"
 }

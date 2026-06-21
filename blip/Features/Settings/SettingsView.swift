@@ -176,7 +176,7 @@ private struct SettingsRow: View {
 
 // MARK: - Quiet hours sheet
 
-private struct QuietHoursSheet: View {
+struct QuietHoursSheet: View {
     @EnvironmentObject private var users: UserRepository
     @Environment(\.dismiss) private var dismiss
 
@@ -269,12 +269,7 @@ private struct HourPicker: View {
     }
 }
 
-private func formatHour(_ h: Int) -> String {
-    let normalized = ((h % 24) + 24) % 24
-    let hour12 = normalized % 12 == 0 ? 12 : normalized % 12
-    let suffix = normalized < 12 ? "am" : "pm"
-    return "\(hour12)\(suffix)"
-}
+// formatHour is defined at module level in ProfileView.swift
 
 // MARK: - Theme picker
 
