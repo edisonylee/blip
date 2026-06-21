@@ -284,20 +284,50 @@ struct ExportView: View {
     @ViewBuilder
     private func readyState(url: URL, dateKey: String, hours: Int) -> some View {
         VStack(spacing: 12) {
-            ExportPlayerView(url: url)
+
+            // ── Stitched video player ──────────────────────────────────
+            ExportPlayerView(url: localVideoURL ?? url)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
 
-            // Meta row
+            // ── Hour chips row — shows each hour included in the stitch ─
+            // Uses hoursWithClips (from the live clips listener) so the user
+            // can see exactly which hours are represented back-to-back.
+            if !hoursWithClips.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(hoursWithClips, id: \.self) { hour in
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(BlipColor.accent)
+                                    .frame(width: 5, height: 5)
+                                Text(hourLabelShort(for: hour))
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(BlipColor.textPrimary)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(BlipColor.surface,
+                                        in: Capsule())
+                            .overlay(Capsule().stroke(BlipColor.border, lineWidth: 1))
+                        }
+                        // Arrow chips hint at sequential order
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+
+            // ── Meta row ───────────────────────────────────────────────
             HStack(spacing: 8) {
                 Text(dateKey)
                 Text("·")
-                Text("\(hours) hour\(hours == 1 ? "" : "s")")
+                Text("\(hours) hour\(hours == 1 ? "" : "s") stitched")
                 if isPreparingLocal {
                     Text("·")
                     ProgressView().scaleEffect(0.6).tint(BlipColor.accent)
-                    Text("downloading…")
+                    Text("processing…")
                 }
                 Spacer()
                 HeartButton(
@@ -555,10 +585,9 @@ struct ExportView: View {
             .padding(.vertical, 8)
     }
 
-    /// Downloads the stitched MP4 to a local tmp file so Share / Save-to-Photos
-    /// work with a real file path (remote https:// URLs don't work for those).
+    /// Downloads the stitched MP4, burns hour-label chips into each segment,
+    /// then sets localVideoURL to the labeled file ready for sharing / saving.
     private func downloadForSharing(remoteURL: URL) async {
-        // Skip if we already have this exact file cached.
         if localVideoURL != nil { return }
 
         isPreparingLocal = true
@@ -566,7 +595,6 @@ struct ExportView: View {
         defer { isPreparingLocal = false }
 
         do {
-            // Use URLSession with a longer timeout — export files can be large.
             let config = URLSessionConfiguration.default
             config.timeoutIntervalForRequest  = 120
             config.timeoutIntervalForResource = 300
@@ -574,26 +602,182 @@ struct ExportView: View {
 
             let (tmpURL, response) = try await session.download(from: remoteURL)
 
-            // Validate HTTP status
             if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-                throw URLError(
-                    .badServerResponse,
-                    userInfo: [NSLocalizedDescriptionKey:
-                        "server returned \(http.statusCode) — the export link may have expired. try re-stitching."]
-                )
+                throw URLError(.badServerResponse, userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "server returned \(http.statusCode) — export link may have expired, try re-stitching."
+                ])
             }
 
-            // Rename with .mp4 so iOS picks the right codec + share options.
-            let dest = FileManager.default.temporaryDirectory
-                .appendingPathComponent("blip-export-\(UUID().uuidString).mp4")
-            try? FileManager.default.removeItem(at: dest)
-            try FileManager.default.moveItem(at: tmpURL, to: dest)
+            let raw = FileManager.default.temporaryDirectory
+                .appendingPathComponent("blip-export-raw-\(UUID().uuidString).mp4")
+            try? FileManager.default.removeItem(at: raw)
+            try FileManager.default.moveItem(at: tmpURL, to: raw)
 
-            localVideoURL = dest
+            // Burn hour chips into the video then set the labeled file.
+            let labeled = await burnHourLabels(into: raw)
+            localVideoURL = labeled
         } catch {
-            localVideoURL  = nil
-            downloadError  = "download failed — \(error.localizedDescription)"
+            localVideoURL = nil
+            downloadError = "download failed — \(error.localizedDescription)"
         }
+    }
+
+    // MARK: - Hour label text overlay (client-side, AVFoundation)
+
+    /// Adds a floating hour-label chip (e.g. "6 AM", "7 AM") to each timed
+    /// segment of the stitched video using CoreAnimation text layers baked in
+    /// via AVVideoCompositionCoreAnimationTool.
+    ///
+    /// Returns the labeled file URL, or the original on any failure so the
+    /// user always has a usable video.
+    private func burnHourLabels(into sourceURL: URL) async -> URL {
+        let hours = hoursWithClips
+        guard !hours.isEmpty else { return sourceURL }
+
+        do {
+            let asset = AVURLAsset(url: sourceURL)
+
+            // Load required properties
+            let tracks   = try await asset.loadTracks(withMediaType: .video)
+            guard let vt = tracks.first else { return sourceURL }
+            let duration    = try await asset.load(.duration)
+            let naturalSize = try await vt.load(.naturalSize)
+            let transform   = try await vt.load(.preferredTransform)
+
+            let totalSec = CMTimeGetSeconds(duration)
+            guard totalSec > 0 else { return sourceURL }
+
+            // Resolve the actual display dimensions (accounts for rotation).
+            let t = transform
+            let swapped = (t.a == 0 && t.d == 0)
+            let renderSize = swapped
+                ? CGSize(width: naturalSize.height, height: naturalSize.width)
+                : naturalSize
+
+            let secPerHour = totalSec / Double(hours.count)
+
+            // ── Build AVMutableComposition ─────────────────────────────
+            let comp = AVMutableComposition()
+            let cvt  = comp.addMutableTrack(withMediaType: .video,
+                                             preferredTrackID: kCMPersistentTrackID_Invalid)!
+            try cvt.insertTimeRange(CMTimeRange(start: .zero, duration: duration),
+                                    of: vt, at: .zero)
+            cvt.preferredTransform = transform
+
+            let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+            if let at = audioTracks.first {
+                let cat = comp.addMutableTrack(withMediaType: .audio,
+                                               preferredTrackID: kCMPersistentTrackID_Invalid)
+                try cat?.insertTimeRange(CMTimeRange(start: .zero, duration: duration),
+                                         of: at, at: .zero)
+            }
+
+            // ── Build CoreAnimation layer tree ─────────────────────────
+            // isGeometryFlipped = true so y=0 is the TOP (UIKit convention).
+            let parentLayer = CALayer()
+            parentLayer.frame = CGRect(origin: .zero, size: renderSize)
+            parentLayer.isGeometryFlipped = true
+
+            let videoLayer = CALayer()
+            videoLayer.frame = parentLayer.frame
+            parentLayer.addSublayer(videoLayer)
+
+            let chipH: CGFloat    = max(28, renderSize.height * 0.055)
+            let fontSize: CGFloat = chipH * 0.52
+            let pad: CGFloat      = renderSize.width * 0.035
+            let vPad: CGFloat     = renderSize.height * 0.03
+
+            for (idx, hour) in hours.enumerated() {
+                let label   = hourLabelShort(for: hour)
+                let chipW   = CGFloat(label.count) * fontSize * 0.7 + pad * 2.2
+
+                // Semi-transparent dark capsule
+                let chipLayer = CALayer()
+                chipLayer.backgroundColor = UIColor.black.withAlphaComponent(0.55).cgColor
+                chipLayer.cornerRadius    = chipH / 2
+                chipLayer.frame = CGRect(
+                    x: renderSize.width - chipW - pad,
+                    y: vPad,                            // isGeometryFlipped → vPad from top
+                    width: chipW,
+                    height: chipH
+                )
+
+                // White bold label
+                let textLayer = CATextLayer()
+                textLayer.string         = label
+                textLayer.fontSize       = fontSize
+                textLayer.foregroundColor = UIColor.white.cgColor
+                textLayer.alignmentMode  = .center
+                textLayer.contentsScale  = UIScreen.main.scale
+                textLayer.frame          = chipLayer.bounds
+                chipLayer.addSublayer(textLayer)
+
+                // Fade in/out during this hour's time window
+                let segStart = Double(idx) * secPerHour
+                let segEnd   = Double(idx + 1) * secPerHour
+                let fadeT    = min(0.25, secPerHour * 0.12)
+
+                let anim = CAKeyframeAnimation(keyPath: "opacity")
+                anim.keyTimes = [
+                    0, segStart, segStart + fadeT,
+                    segEnd - fadeT, segEnd, totalSec
+                ].map { NSNumber(value: $0 / totalSec) }
+                anim.values     = [0, 0, 1, 1, 0, 0]
+                anim.duration   = totalSec
+                anim.fillMode   = .forwards
+                anim.isRemovedOnCompletion = false
+                chipLayer.add(anim, forKey: "opacity-\(idx)")
+                chipLayer.opacity = 0
+
+                parentLayer.addSublayer(chipLayer)
+            }
+
+            // ── Video composition with animation tool ──────────────────
+            let vc = AVMutableVideoComposition()
+            vc.renderSize    = renderSize
+            vc.frameDuration = CMTime(value: 1, timescale: 30)
+            vc.animationTool = AVVideoCompositionCoreAnimationTool(
+                postProcessingAsVideoLayer: videoLayer,
+                in: parentLayer
+            )
+
+            let instr  = AVMutableVideoCompositionInstruction()
+            instr.timeRange = CMTimeRange(start: .zero, duration: duration)
+            let li = AVMutableVideoCompositionLayerInstruction(assetTrack: cvt)
+            instr.layerInstructions = [li]
+            vc.instructions = [instr]
+
+            // ── Export ─────────────────────────────────────────────────
+            let out = FileManager.default.temporaryDirectory
+                .appendingPathComponent("blip-export-labeled-\(UUID().uuidString).mp4")
+            try? FileManager.default.removeItem(at: out)
+
+            guard let exporter = AVAssetExportSession(
+                asset: comp,
+                presetName: AVAssetExportPresetHighestQuality
+            ) else { return sourceURL }
+
+            exporter.outputURL              = out
+            exporter.outputFileType         = .mp4
+            exporter.videoComposition       = vc
+            exporter.shouldOptimizeForNetworkUse = true
+
+            await exporter.export()
+            return exporter.status == .completed ? out : sourceURL
+
+        } catch {
+            return sourceURL   // silent fallback — user still gets the raw video
+        }
+    }
+
+    /// Short uppercase hour label used both in the UI chips and in the video overlay.
+    private func hourLabelShort(for hour: Int) -> String {
+        if hour == currentHour { return "NOW" }
+        var c = DateComponents(); c.hour = hour
+        let date = Calendar.current.date(from: c) ?? Date()
+        let f = DateFormatter(); f.dateFormat = "h a"
+        return f.string(from: date).uppercased()
     }
 
     @ViewBuilder
