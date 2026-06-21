@@ -353,11 +353,15 @@ private struct ProfileContent: View {
                 Text(title)
                     .font(.blip(size: 15, weight: .medium))
                     .foregroundStyle(textTint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                 Spacer()
                 if let trailing {
                     Text(trailing)
                         .font(.blip(size: 13))
                         .foregroundStyle(BlipColor.textTertiary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
                 if showChevron {
                     Image(systemName: "chevron.right")

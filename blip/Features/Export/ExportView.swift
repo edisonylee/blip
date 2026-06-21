@@ -340,16 +340,19 @@ struct ExportView: View {
             }
 
             // ── Meta row ───────────────────────────────────────────────
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Text(dateKey)
+                    .lineLimit(1)
                 Text("·")
-                Text("\(hours) hour\(hours == 1 ? "" : "s") stitched")
+                Text("\(hours) hour\(hours == 1 ? "" : "s")")
+                    .lineLimit(1)
                 if isPreparingLocal {
                     Text("·")
-                    ProgressView().scaleEffect(0.6).tint(BlipColor.accent)
-                    Text("processing…")
+                    ProgressView().scaleEffect(0.55).tint(BlipColor.accent)
+                    Text("downloading…")
+                        .lineLimit(1)
                 }
-                Spacer()
+                Spacer(minLength: 4)
                 HeartButton(
                     liked: likes.liked,
                     count: likes.count,
@@ -359,6 +362,7 @@ struct ExportView: View {
             }
             .font(BlipTypography.caption)
             .foregroundStyle(BlipColor.textTertiary)
+            .minimumScaleFactor(0.8)
             .padding(.horizontal, 16)
 
             // Download error banner

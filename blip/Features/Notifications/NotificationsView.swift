@@ -257,7 +257,6 @@ private struct FriendRequestCard: View {
                 .disabled(isProcessing)
             }
             .fixedSize(horizontal: true, vertical: false)
-            }
         }
         .padding(14)
         .background(BlipColor.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
