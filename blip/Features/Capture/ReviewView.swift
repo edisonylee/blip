@@ -51,25 +51,41 @@ struct ReviewView: View {
             .padding(.top, 12)
         }
         .toolbar {
+            // Retake — dismisses ReviewView back to CaptureView so the user
+            // can record again with the same session already running.
             ToolbarItem(placement: .topBarLeading) {
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark").foregroundStyle(BlipColor.textPrimary)
+                Button {
+                    dismiss()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.counterclockwise.circle.fill")
+                            .font(.system(size: 16))
+                        Text("Retake")
+                            .font(.blip(size: 14, weight: .semibold))
+                    }
+                    .foregroundStyle(BlipColor.textPrimary)
                 }
                 .disabled(vm.isUploading)
-                .accessibilityLabel("close")
+                .accessibilityLabel("retake — record again")
             }
+
+            // Post / send
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: post) {
                     if vm.isUploading {
                         ProgressView().tint(BlipColor.textPrimary)
                     } else {
-                        Image(systemName: "arrow.up")
-                            .foregroundStyle(vm.canPost ? BlipColor.textPrimary : BlipColor.textTertiary)
-                            .fontWeight(.semibold)
+                        HStack(spacing: 5) {
+                            Text("Post")
+                                .font(.blip(size: 14, weight: .semibold))
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 16))
+                        }
+                        .foregroundStyle(vm.canPost ? BlipColor.accentNeutral : BlipColor.textTertiary)
                     }
                 }
                 .disabled(!vm.canPost || vm.isUploading)
-                .accessibilityLabel("post")
+                .accessibilityLabel("post blip")
             }
         }
         .toolbarBackground(BlipColor.background, for: .navigationBar)
