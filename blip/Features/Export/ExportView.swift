@@ -631,24 +631,181 @@ struct ExportView: View {
                 ])
             }
 
-            let dest = FileManager.default.temporaryDirectory
-                .appendingPathComponent("blip-export-\(UUID().uuidString).mp4")
-            try? FileManager.default.removeItem(at: dest)
-            try FileManager.default.moveItem(at: tmpURL, to: dest)
-            localVideoURL = dest
+            // Move to a stable path first
+            let raw = FileManager.default.temporaryDirectory
+                .appendingPathComponent("blip-export-raw-\(UUID().uuidString).mp4")
+            try? FileManager.default.removeItem(at: raw)
+            try FileManager.default.moveItem(at: tmpURL, to: raw)
+
+            // Burn hour labels using CoreImage (no CALayer/animation — was crashing)
+            let labeled = await burnHourLabels(into: raw)
+            localVideoURL = labeled
         } catch {
             localVideoURL = nil
             downloadError = "download failed — \(error.localizedDescription)"
         }
     }
 
-    // NOTE: Client-side AVVideoCompositionCoreAnimationTool text-burning was
-    // removed — it crashed reliably on device (EXC_BREAKPOINT in AVFoundation)
-    // regardless of animation approach. Hour labels are surfaced in the UI via
-    // the chip row in readyState instead. If server-side ffmpeg drawtext is
-    // added to the exportStitch Cloud Function, it can be re-enabled there.
+    // MARK: - Hour label burning (CoreImage — no CALayer, no animation tool)
+
+    /// Composites hour-label chips onto each segment of the stitched video.
+    /// Uses AVVideoComposition(asset:applyingCIFiltersWithHandler:) + CISourceOverCompositing.
+    /// This avoids AVVideoCompositionCoreAnimationTool which crashed on device.
+    private func burnHourLabels(into sourceURL: URL) async -> URL {
+        let hours   = hoursWithClips
+        let curHour = currentHour
+        guard !hours.isEmpty else { return sourceURL }
+        return await Task.detached(priority: .userInitiated) {
+            await Self.ciComposeHourLabels(sourceURL: sourceURL, hours: hours, currentHour: curHour)
+        }.value
+    }
+
+    private static func ciComposeHourLabels(
+        sourceURL: URL, hours: [Int], currentHour: Int
+    ) async -> URL {
+        do {
+            let asset = AVURLAsset(url: sourceURL)
+            let vtracks = try await asset.loadTracks(withMediaType: .video)
+            guard let vt = vtracks.first else { return sourceURL }
+            let duration    = try await asset.load(.duration)
+            let naturalSize = try await vt.load(.naturalSize)
+            let transform   = try await vt.load(.preferredTransform)
+
+            let totalSec = CMTimeGetSeconds(duration)
+            guard totalSec > 0 else { return sourceURL }
+
+            let swapped    = (transform.a == 0 && transform.d == 0)
+            let rawSize    = swapped
+                ? CGSize(width: naturalSize.height, height: naturalSize.width)
+                : naturalSize
+            // H.264 needs even pixel counts
+            let renderSize = CGSize(
+                width:  floor(rawSize.width  / 2) * 2,
+                height: floor(rawSize.height / 2) * 2
+            )
+
+            let secPerHour = totalSec / Double(hours.count)
+            let chipH  = max(40.0, renderSize.height * 0.07)
+            let fontSize = chipH * 0.50
+            let padH   = renderSize.width  * 0.035
+            let padV   = renderSize.height * 0.025
+
+            // Pre-render each hour's label chip as a CIImage (nonisolated CoreGraphics)
+            var chips: [Int: CIImage] = [:]
+            for hour in hours {
+                let label = Self.hourLabel(hour, currentHour: currentHour)
+                let chipW = CGFloat(label.count) * fontSize * 0.68 + 24
+                if let ci = Self.renderChipCI(label: label, w: chipW, h: chipH, fontSize: fontSize) {
+                    // CoreImage origin is bottom-left → place chip at top-right
+                    let x = renderSize.width  - chipW - padH
+                    let y = renderSize.height - chipH - padV
+                    chips[hour] = ci.transformed(by: CGAffineTransform(translationX: x, y: y))
+                }
+            }
+
+            // Build composition (video + audio)
+            let comp = AVMutableComposition()
+            guard let cvt = comp.addMutableTrack(withMediaType: .video,
+                                                  preferredTrackID: kCMPersistentTrackID_Invalid)
+            else { return sourceURL }
+            try cvt.insertTimeRange(CMTimeRange(start: .zero, duration: duration), of: vt, at: .zero)
+            cvt.preferredTransform = transform
+
+            let atracks = try await asset.loadTracks(withMediaType: .audio)
+            if let at = atracks.first {
+                let ca = comp.addMutableTrack(withMediaType: .audio,
+                                              preferredTrackID: kCMPersistentTrackID_Invalid)
+                try ca?.insertTimeRange(CMTimeRange(start: .zero, duration: duration), of: at, at: .zero)
+            }
+
+            // CIFilter-based composition — ONE frame at a time, no CALayer involved
+            let vc = AVVideoComposition(asset: comp) { request in
+                let src  = request.sourceImage.clampedToExtent()
+                let tSec = CMTimeGetSeconds(request.compositionTime)
+                let idx  = min(max(0, Int(tSec / secPerHour)), hours.count - 1)
+
+                guard let chip = chips[hours[idx]],
+                      let over = CIFilter(name: "CISourceOverCompositing",
+                                          parameters: [kCIInputImageKey: chip,
+                                                       kCIInputBackgroundImageKey: src])?.outputImage
+                else {
+                    request.finish(with: src.cropped(to: request.sourceImage.extent), context: nil)
+                    return
+                }
+                request.finish(with: over.cropped(to: request.sourceImage.extent), context: nil)
+            }
+
+            let out = FileManager.default.temporaryDirectory
+                .appendingPathComponent("blip-labeled-\(UUID().uuidString).mp4")
+            try? FileManager.default.removeItem(at: out)
+
+            guard let ex = AVAssetExportSession(asset: comp,
+                                                presetName: AVAssetExportPreset1280x720)
+            else { return sourceURL }
+            ex.outputURL              = out
+            ex.outputFileType         = .mp4
+            ex.videoComposition       = vc
+            ex.shouldOptimizeForNetworkUse = true
+            await ex.export()
+            return ex.status == .completed ? out : sourceURL
+        } catch {
+            return sourceURL
+        }
+    }
+
+    /// Render a text chip using CoreGraphics + CoreText (nonisolated, no UIKit).
+    nonisolated private static func renderChipCI(
+        label: String, w: CGFloat, h: CGFloat, fontSize: CGFloat
+    ) -> CIImage? {
+        let scale: Int = 3
+        let pw = Int(w * CGFloat(scale)); let ph = Int(h * CGFloat(scale))
+        guard pw > 0, ph > 0 else { return nil }
+        var pixels = [UInt8](repeating: 0, count: pw * ph * 4)
+        let cs = CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(data: &pixels, width: pw, height: ph,
+                                  bitsPerComponent: 8, bytesPerRow: pw * 4, space: cs,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+
+        ctx.scaleBy(x: CGFloat(scale), y: CGFloat(scale))
+
+        // Rounded-rect background
+        let rr = CGPath(roundedRect: CGRect(x: 0, y: 0, width: w, height: h),
+                        cornerWidth: h / 2, cornerHeight: h / 2, transform: nil)
+        ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 0.60))
+        ctx.addPath(rr); ctx.fillPath()
+
+        // White text centred via CoreText
+        let font = CTFontCreateWithName("Helvetica-Bold" as CFString, fontSize, nil)
+        let atts: [CFString: Any] = [
+            kCTFontAttributeName: font,
+            kCTForegroundColorAttributeName: CGColor(red: 1, green: 1, blue: 1, alpha: 1)
+        ]
+        let aStr = CFAttributedStringCreate(nil, label as CFString, atts as CFDictionary)!
+        let line = CTLineCreateWithAttributedString(aStr)
+        let tb   = CTLineGetBoundsWithOptions(line, [])
+        ctx.textPosition = CGPoint(x: (w - tb.width) / 2 - tb.minX,
+                                   y: (h - tb.height) / 2 - tb.minY)
+        CTLineDraw(line, ctx)
+
+        guard let cg = ctx.makeImage() else { return nil }
+        // Scale back down so the CIImage is in video-pixel coordinates
+        return CIImage(cgImage: cg)
+            .transformed(by: CGAffineTransform(scaleX: 1 / CGFloat(scale),
+                                               y: 1 / CGFloat(scale)))
+    }
+
+    nonisolated private static func hourLabel(_ hour: Int, currentHour: Int) -> String {
+        if hour == currentHour { return "NOW" }
+        var c = DateComponents(); c.hour = hour
+        let date = Calendar.current.date(from: c) ?? Date()
+        let f = DateFormatter(); f.dateFormat = "h a"
+        return f.string(from: date).uppercased()
+    }
 
     private func hourLabelShort(for hour: Int) -> String {
+        Self.hourLabel(hour, currentHour: currentHour)
+    }
         if hour == currentHour { return "NOW" }
         var c = DateComponents(); c.hour = hour
         let date = Calendar.current.date(from: c) ?? Date()
