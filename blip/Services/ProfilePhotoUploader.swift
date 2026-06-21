@@ -35,9 +35,25 @@ final class ProfilePhotoUploader: ProfilePhotoUploading {
 
         // Resize + JPEG-encode off the main thread — UIGraphicsImageRenderer and
         // jpegData are synchronous CPU work that blocks the UI if left on MainActor.
-        let jpegData = await Task.detached(priority: .userInitiated) {
-            let resized = Self.resize(image, maxEdge: Self.maxEdge)
-            return resized.jpegData(compressionQuality: Self.jpegQuality)
+        // Capture constants before entering the detached task to avoid any actor hop.
+        let maxEdge = Self.maxEdge
+        let quality = Self.jpegQuality
+        let jpegData: Data? = await Task.detached(priority: .userInitiated) {
+            // Inline resize so no @MainActor method is called across actor boundaries.
+            let size    = image.size
+            let longest = max(size.width, size.height)
+            let target: UIImage
+            if longest > maxEdge {
+                let scale   = maxEdge / longest
+                let newSize = CGSize(width: size.width * scale, height: size.height * scale)
+                let fmt = UIGraphicsImageRendererFormat.default()
+                fmt.opaque = true; fmt.scale = 1
+                target = UIGraphicsImageRenderer(size: newSize, format: fmt)
+                    .image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
+            } else {
+                target = image
+            }
+            return target.jpegData(compressionQuality: quality)
         }.value
         guard let data = jpegData else {
             throw UploadError.encodingFailed
