@@ -187,11 +187,13 @@ private struct LeaderboardContent: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
                     .background(
+                        // Fade from clear → gradient's bottom colour (emerald-100)
+                        // so the list softly blurs into the pinned card.
                         LinearGradient(
-                            colors: [Color.clear, BlipColor.backgroundGradient.stops.last?.color ?? .clear],
+                            colors: [Color.clear, Color(hex: 0xD1FAE5)],
                             startPoint: .top, endPoint: .bottom
                         )
-                        .frame(height: 100)
+                        .frame(height: 80)
                         .allowsHitTesting(false),
                         alignment: .top
                     )

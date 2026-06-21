@@ -1,4 +1,5 @@
 import AVKit
+import Photos
 import SwiftUI
 
 /// Preview-then-stitch.
@@ -20,14 +21,12 @@ struct ExportView: View {
     @StateObject private var likes = DayLikesRepository()
 
     @State private var showShare = false
-    /// MP4 downloaded from the stitched URL into the app's tmp directory. We
-    /// share the LOCAL URL, not the remote one — share-sheet extensions
-    /// (Photos save, TikTok, Instagram) need a real file to attach. Sharing the
-    /// remote `https://` URL would only paste a link string.
     @State private var localVideoURL: URL?
-    /// True between entering .ready and finishing the local download. The share
-    /// + Instagram buttons stay disabled until the file is ready locally.
     @State private var isPreparingLocal = false
+    @State private var downloadError: String?        // shown when download fails
+    @State private var isSavingToPhotos = false      // in-progress "save to photos"
+    @State private var savedToPhotos = false          // brief success badge
+    @State private var showPhotoPermissionAlert = false
 
     var body: some View {
         ZStack {
@@ -169,13 +168,15 @@ struct ExportView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
 
+            // Meta row
             HStack(spacing: 8) {
                 Text(dateKey)
                 Text("·")
                 Text("\(hours) hour\(hours == 1 ? "" : "s")")
                 if isPreparingLocal {
                     Text("·")
-                    Text("preparing…")
+                    ProgressView().scaleEffect(0.6).tint(BlipColor.accent)
+                    Text("downloading…")
                 }
                 Spacer()
                 HeartButton(
@@ -189,23 +190,128 @@ struct ExportView: View {
             .foregroundStyle(BlipColor.textTertiary)
             .padding(.horizontal, 16)
 
-            HStack(spacing: 10) {
-                shareButton
-                if InstagramStoryShare.isAvailable {
-                    instagramStoryButton
+            // Download error banner
+            if let err = downloadError {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(BlipColor.error)
+                    Text(err)
+                        .font(.blip(size: 12))
+                        .foregroundStyle(BlipColor.error)
+                        .lineLimit(2)
+                    Spacer()
+                    Button { Task { await downloadForSharing(remoteURL: url) } } label: {
+                        Text("retry")
+                            .font(.blip(size: 12, weight: .semibold))
+                            .foregroundStyle(BlipColor.accentNeutral)
+                    }
                 }
-                tikTokShareButton
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(BlipColor.error.opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal, 16)
+            }
+
+            // Action buttons
+            VStack(spacing: 10) {
+                // Primary: Save to Photos
+                saveToPhotosButton
+
+                // Secondary row: Share + social
+                HStack(spacing: 10) {
+                    shareButton
+                    if InstagramStoryShare.isAvailable { instagramStoryButton }
+                    tikTokShareButton
+                }
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
         }
-        .task(id: url) { await downloadForSharing(remoteURL: url) }
+        .task(id: url) {
+            downloadError = nil
+            await downloadForSharing(remoteURL: url)
+        }
         .task(id: dateKey) { likes.startListening(blipId: blip.id, dateKey: dateKey) }
         .sheet(isPresented: $showShare) {
-            // Always pass the local file when we have it — that's what unlocks
-            // Save Video / TikTok / etc. Fall back to the remote URL only if
-            // the local download somehow failed (rare; user can still copy link).
             ShareSheet(activityItems: [localVideoURL ?? url])
+        }
+        .alert("photo library access needed", isPresented: $showPhotoPermissionAlert) {
+            Button("open settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("cancel", role: .cancel) {}
+        } message: {
+            Text("allow blip to add videos to your photo library in Settings.")
+        }
+    }
+
+    // MARK: - Save to Photos
+
+    private var saveToPhotosButton: some View {
+        Button {
+            Task { await saveToPhotos() }
+        } label: {
+            HStack(spacing: 8) {
+                if isSavingToPhotos {
+                    ProgressView().tint(BlipColor.accentNeutralOn).scaleEffect(0.8)
+                } else if savedToPhotos {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(BlipColor.accentNeutralOn)
+                } else {
+                    Image(systemName: "square.and.arrow.down")
+                        .foregroundStyle(BlipColor.accentNeutralOn)
+                }
+                Text(savedToPhotos ? "saved to photos!" : "save to photos")
+                    .font(BlipTypography.body)
+                    .foregroundStyle(BlipColor.accentNeutralOn)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 13)
+            .background(
+                savedToPhotos
+                    ? Color(red: 0.2, green: 0.78, blue: 0.45)
+                    : BlipColor.accentNeutral.opacity(localVideoURL == nil ? 0.4 : 1.0),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .animation(.spring(response: 0.3), value: savedToPhotos)
+        }
+        .disabled(localVideoURL == nil || isSavingToPhotos || savedToPhotos)
+    }
+
+    private func saveToPhotos() async {
+        guard let local = localVideoURL else { return }
+        isSavingToPhotos = true
+        defer { isSavingToPhotos = false }
+
+        // Check / request permission
+        let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+        if status == .denied || status == .restricted {
+            showPhotoPermissionAlert = true
+            return
+        }
+        if status == .notDetermined {
+            let granted = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard granted == .authorized || granted == .limited else {
+                showPhotoPermissionAlert = true
+                return
+            }
+        }
+
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: local)
+            }
+            savedToPhotos = true
+            // Reset the tick after 3 s so the user can save again if needed
+            Task {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                savedToPhotos = false
+            }
+        } catch {
+            downloadError = "couldn't save to photos: \(error.localizedDescription)"
         }
     }
 
@@ -256,31 +362,44 @@ struct ExportView: View {
         .accessibilityLabel("Share to TikTok")
     }
 
-    /// Pull the stitched MP4 to a tmp file so the share sheet can attach it
-    /// as a real video. Idempotent for the same URL — re-entering .ready with
-    /// an unchanged URL skips the download.
+    /// Downloads the stitched MP4 to a local tmp file so Share / Save-to-Photos
+    /// work with a real file path (remote https:// URLs don't work for those).
     private func downloadForSharing(remoteURL: URL) async {
-        // Already have it for this URL? Bail. (.task(id:) already filters most
-        // duplicates, but being defensive is cheap.)
-        if let existing = localVideoURL,
-           existing.lastPathComponent.contains(remoteURL.lastPathComponent) {
-            return
-        }
+        // Skip if we already have this exact file cached.
+        if localVideoURL != nil { return }
+
         isPreparingLocal = true
+        downloadError = nil
         defer { isPreparingLocal = false }
+
         do {
-            let (tmpURL, _) = try await URLSession.shared.download(from: remoteURL)
-            // URLSession picks an opaque tmp name; rename so iOS detects the
-            // .mp4 extension and shows the right share-sheet affordances.
+            // Use URLSession with a longer timeout — export files can be large.
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest  = 120
+            config.timeoutIntervalForResource = 300
+            let session = URLSession(configuration: config)
+
+            let (tmpURL, response) = try await session.download(from: remoteURL)
+
+            // Validate HTTP status
+            if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+                throw URLError(
+                    .badServerResponse,
+                    userInfo: [NSLocalizedDescriptionKey:
+                        "server returned \(http.statusCode) — the export link may have expired. try re-stitching."]
+                )
+            }
+
+            // Rename with .mp4 so iOS picks the right codec + share options.
             let dest = FileManager.default.temporaryDirectory
                 .appendingPathComponent("blip-export-\(UUID().uuidString).mp4")
             try? FileManager.default.removeItem(at: dest)
             try FileManager.default.moveItem(at: tmpURL, to: dest)
+
             localVideoURL = dest
         } catch {
-            // Leave localVideoURL nil — share button stays disabled, user can
-            // re-stitch. Could surface a toast here later.
-            localVideoURL = nil
+            localVideoURL  = nil
+            downloadError  = "download failed — \(error.localizedDescription)"
         }
     }
 
