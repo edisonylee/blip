@@ -296,10 +296,6 @@ private struct UserBrowseCard: View {
                     .foregroundStyle(BlipColor.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                Text(String(user.id.prefix(8)))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(BlipColor.textTertiary)
-                    .lineLimit(1)
             }
             .layoutPriority(0)
 
@@ -381,10 +377,6 @@ private struct FriendRequestRow: View {
                     .foregroundStyle(BlipColor.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                Text(String(fromUid.prefix(8)))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(BlipColor.textTertiary)
-                    .lineLimit(1)
             }
             .layoutPriority(0)   // yields space to buttons if needed
 
