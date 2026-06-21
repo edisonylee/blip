@@ -128,6 +128,7 @@ struct ChatView: View {
     @State private var pendingAudioBars: [CGFloat] = []
     @State private var pendingAudioDuration: TimeInterval = 0
     @State private var isSendingAudio = false
+    @State private var showMicAlert = false  // shown when mic permission is denied
 
     var body: some View {
         ZStack {
@@ -213,6 +214,17 @@ struct ChatView: View {
             ImageGalleryModal(urls: galleryImages) {
                 showImageGallery = false
             }
+        }
+        // Shown when the user taps the mic button but has denied microphone access
+        .alert("microphone access needed", isPresented: $showMicAlert) {
+            Button("open settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("cancel", role: .cancel) {}
+        } message: {
+            Text("blip needs microphone access to record voice messages.\ntap 'open settings' to allow it.")
         }
     }
 
@@ -576,14 +588,31 @@ struct ChatView: View {
 
     private func toggleRecording() async {
         guard case .signedIn = auth.state else { return }
-        let granted = await audioRec.requestPermission()
-        guard granted else { return }
+
+        // If already recording, stop first — no permission check needed.
         if audioRec.isRecording {
             stopAndPreviewAudio()
-        } else {
-            inputFocused = false
-            audioRec.start()
+            return
         }
+
+        // Check permission status before requesting so we know whether to
+        // show the "open Settings" alert (denied) vs the system dialog (undetermined).
+        let current = AVAudioSession.sharedInstance().recordPermission
+        if current == .denied {
+            showMicAlert = true
+            return
+        }
+
+        // .undetermined → will trigger the system permission dialog once.
+        let granted = await audioRec.requestPermission()
+        guard granted else {
+            // User just denied the just-shown dialog.
+            showMicAlert = true
+            return
+        }
+
+        inputFocused = false
+        audioRec.start()
     }
 
     private func stopAndPreviewAudio() {
@@ -630,7 +659,9 @@ struct ChatView: View {
             pendingAudioBars = []
             pendingAudioDuration = 0
         } catch {
-            imageSendError = "Audio send failed: \(error.localizedDescription)"
+            // Surface a clean message — the raw Firebase error includes internal
+            // storage paths that are not useful to the user.
+            imageSendError = "couldn't send voice message — please try again."
         }
     }
 
