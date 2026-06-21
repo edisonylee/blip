@@ -240,48 +240,47 @@ private struct RequestCard: View {
     let onDecline: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            // Info
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
+            // Info row — text yields space if icon + label are tight
+            HStack(spacing: 10) {
                 ZStack {
                     Circle()
                         .fill(BlipColor.accent.opacity(0.13))
-                        .frame(width: 48, height: 48)
+                        .frame(width: 44, height: 44)
                     Image(systemName: "sparkles")
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(BlipColor.accent)
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(request.blipName)
-                        .font(.blip(size: 16, weight: .bold))
+                        .font(.blip(size: 15, weight: .bold))
                         .foregroundStyle(BlipColor.textPrimary)
                         .lineLimit(1)
-                    if let h = request.inviterHandle {
-                        Text("invited by @\(h)")
-                            .font(.blip(size: 12))
-                            .foregroundStyle(BlipColor.textTertiary)
-                    } else {
-                        Text("you've been invited")
-                            .font(.blip(size: 12))
-                            .foregroundStyle(BlipColor.textTertiary)
-                    }
+                        .minimumScaleFactor(0.8)
+                    Text(request.inviterHandle.map { "invited by @\($0)" } ?? "you've been invited")
+                        .font(.blip(size: 11))
+                        .foregroundStyle(BlipColor.textTertiary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
-                Spacer()
+                Spacer(minLength: 4)
             }
 
-            // Buttons
-            HStack(spacing: 10) {
+            // Button row — equal-width halves, always on one line
+            HStack(spacing: 8) {
                 Button(action: onDecline) {
                     Text("decline")
-                        .font(.blip(size: 14, weight: .semibold))
+                        .font(.blip(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                         .foregroundStyle(BlipColor.textSecondary)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 42)
+                        .frame(height: 40)
                         .background(BlipColor.surface,
-                                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .stroke(BlipColor.border, lineWidth: 1)
                         )
                 }
@@ -290,26 +289,28 @@ private struct RequestCard: View {
 
                 Button(action: onAccept) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .fill(BlipColor.accentNeutral)
                         if isProcessing {
                             ProgressView().tint(.white).scaleEffect(0.8)
                         } else {
                             Text("join blip")
-                                .font(.blip(size: 14, weight: .bold))
+                                .font(.blip(size: 13, weight: .bold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
                                 .foregroundStyle(.white)
                         }
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(height: 42)
+                    .frame(height: 40)
                 }
                 .buttonStyle(.plain)
                 .disabled(isProcessing)
             }
         }
-        .padding(16)
+        .padding(14)
         .background(BlipColor.surface,
-                    in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: BlipColor.accent.opacity(0.07), radius: 8, x: 0, y: 3)
     }
 }
