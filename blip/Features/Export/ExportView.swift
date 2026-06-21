@@ -806,12 +806,6 @@ struct ExportView: View {
     private func hourLabelShort(for hour: Int) -> String {
         Self.hourLabel(hour, currentHour: currentHour)
     }
-        if hour == currentHour { return "NOW" }
-        var c = DateComponents(); c.hour = hour
-        let date = Calendar.current.date(from: c) ?? Date()
-        let f = DateFormatter(); f.dateFormat = "h a"
-        return f.string(from: date).uppercased()
-    }
 
     @ViewBuilder
     private func failedState(msg: String) -> some View {
