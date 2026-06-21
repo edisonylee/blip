@@ -95,7 +95,6 @@ struct HourSlider: View {
     }
 
     private func label(for hour: Int) -> String {
-        if hour == currentHour { return "now" }
         var c = DateComponents()
         c.hour = hour
         let date = Calendar.current.date(from: c) ?? Date()
