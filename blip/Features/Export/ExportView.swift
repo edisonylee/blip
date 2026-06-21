@@ -31,7 +31,7 @@ struct ExportView: View {
 
     var body: some View {
         ZStack {
-            BlipColor.background.ignoresSafeArea()
+            BlipColor.backgroundGradient.ignoresSafeArea()
 
             switch service.status {
             case .idle:
@@ -55,7 +55,7 @@ struct ExportView: View {
             }
         }
         .toolbarBackground(BlipColor.background, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        
     }
 
     // MARK: - Preview
@@ -140,7 +140,7 @@ struct ExportView: View {
         .padding(.horizontal, 16)
         .padding(.bottom, 24)
         .padding(.top, 12)
-        .background(BlipColor.background)
+        .background(BlipColor.surface)
     }
 
     // MARK: - Other states
