@@ -534,7 +534,8 @@ struct ExportView: View {
                 isReady: localVideoURL != nil
             ) {
                 guard let local = localVideoURL else { return }
-                try? await InstagramStoryShare.share(videoFileURL: local)
+                // socialPill takes a sync closure — wrap the async call in Task
+                Task { try? await InstagramStoryShare.share(videoFileURL: local) }
             }
 
             socialDivider
