@@ -304,8 +304,10 @@ struct HomeView: View {
         await withTaskGroup(of: (String, URL?).self) { group in
             for uid in missing {
                 group.addTask {
+                    // try? on a throws->Optional function collapses in Swift 5.7+:
+                    // result is BlipUser? not BlipUser??, so avoid double-chaining.
                     let user = try? await self.userDirectory.fetchUser(uid: uid)
-                    return (uid, user??.photoURL)
+                    return (uid, user.flatMap { $0?.photoURL })
                 }
             }
             for await (uid, url) in group {
