@@ -215,15 +215,14 @@ struct ExportView: View {
 
             // Action buttons
             VStack(spacing: 10) {
-                // Primary: Save to Photos
+                // 1. Save to Camera Roll
                 saveToPhotosButton
 
-                // Secondary row: Share + social
-                HStack(spacing: 10) {
-                    shareButton
-                    if InstagramStoryShare.isAvailable { instagramStoryButton }
-                    tikTokShareButton
-                }
+                // 2. Share (local .mp4 only — shows TikTok, Instagram, Facebook etc.)
+                shareButton
+
+                // 3. Social quick-access row
+                socialRow
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
@@ -233,8 +232,12 @@ struct ExportView: View {
             await downloadForSharing(remoteURL: url)
         }
         .task(id: dateKey) { likes.startListening(blipId: blip.id, dateKey: dateKey) }
+        // IMPORTANT: only pass the local file — remote URL makes social apps
+        // paste a link string instead of uploading the actual video.
         .sheet(isPresented: $showShare) {
-            ShareSheet(activityItems: [localVideoURL ?? url])
+            if let local = localVideoURL {
+                ShareSheet(activityItems: [local])
+            }
         }
         .alert("photo library access needed", isPresented: $showPhotoPermissionAlert) {
             Button("open settings") {
@@ -315,51 +318,120 @@ struct ExportView: View {
         }
     }
 
+    // MARK: - Share button (local file only)
+
     private var shareButton: some View {
         Button { showShare = true } label: {
-            Label("share", systemImage: "square.and.arrow.up")
-                .font(BlipTypography.body)
-                .tracking(BlipTypography.titleTracking)
-                .foregroundStyle(BlipColor.accentNeutralOn)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(
-                    BlipColor.accentNeutral.opacity(localVideoURL == nil ? 0.4 : 1.0),
-                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                )
+            HStack(spacing: 8) {
+                Image(systemName: "square.and.arrow.up")
+                Text("share video")
+            }
+            .font(BlipTypography.body)
+            .foregroundStyle(localVideoURL != nil ? BlipColor.textPrimary : BlipColor.textTertiary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(
+                localVideoURL != nil
+                    ? BlipColor.surface
+                    : BlipColor.surface.opacity(0.5),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(BlipColor.border, lineWidth: 1)
+            )
         }
         .disabled(localVideoURL == nil)
     }
 
-    private var instagramStoryButton: some View {
-        Button {
-            guard let local = localVideoURL else { return }
-            try? InstagramStoryShare.share(videoFileURL: local)
-        } label: {
-            Image(systemName: "circle.dashed.inset.filled")
-                .font(.body)
-                .foregroundStyle(BlipColor.textPrimary)
-                .frame(width: 44, height: 44)
-                .background(BlipColor.surface, in: Circle())
+    // MARK: - Social quick-access row
+    //
+    // All buttons except Instagram Stories use the iOS Share Sheet with the
+    // LOCAL .mp4 file. When TikTok / Instagram / Facebook are installed they
+    // appear in the system share sheet and receive the actual video file — NOT
+    // a URL link. Instagram Stories uses the direct pasteboard API so it opens
+    // the story camera with the video pre-loaded.
+
+    private var socialRow: some View {
+        HStack(spacing: 0) {
+            // Instagram Stories — pasteboard API (opens story camera directly)
+            socialPill(
+                label: "IG Story",
+                icon: "camera.viewfinder",
+                tint: Color(hex: 0xE1306C),
+                isReady: localVideoURL != nil
+            ) {
+                guard let local = localVideoURL else { return }
+                try? InstagramStoryShare.share(videoFileURL: local)
+            }
+
+            socialDivider
+
+            // TikTok — system share sheet (TikTok appears if installed)
+            socialPill(
+                label: "TikTok",
+                icon: "music.note",
+                tint: Color.black,
+                isReady: localVideoURL != nil
+            ) { showShare = true }
+
+            socialDivider
+
+            // Instagram Feed / Reels — system share sheet
+            socialPill(
+                label: "Instagram",
+                icon: "photo.on.rectangle.angled",
+                tint: Color(hex: 0xE1306C),
+                isReady: localVideoURL != nil
+            ) { showShare = true }
+
+            socialDivider
+
+            // Facebook / Meta — system share sheet
+            socialPill(
+                label: "Facebook",
+                icon: "person.2.wave.2.fill",
+                tint: Color(hex: 0x1877F2),
+                isReady: localVideoURL != nil
+            ) { showShare = true }
         }
-        .disabled(localVideoURL == nil)
-        .accessibilityLabel("Share to Instagram story")
+        .background(BlipColor.surface,
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(BlipColor.border, lineWidth: 1)
+        )
     }
 
-    /// TikTok share — virality is the #1 product priority (CLAUDE.md). Opens
-    /// the iOS share sheet, which surfaces TikTok automatically when the app is
-    /// installed and the activity item is a real `.mp4` file. The dedicated
-    /// button gives the destination prominence the generic share button doesn't.
-    private var tikTokShareButton: some View {
-        Button { showShare = true } label: {
-            Image(systemName: "music.note")
-                .font(.body)
-                .foregroundStyle(BlipColor.textPrimary)
-                .frame(width: 44, height: 44)
-                .background(BlipColor.surface, in: Circle())
+    private func socialPill(
+        label: String,
+        icon: String,
+        tint: Color,
+        isReady: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(isReady ? tint : BlipColor.textTertiary)
+                Text(label)
+                    .font(.blip(size: 10, weight: .medium))
+                    .foregroundStyle(isReady ? BlipColor.textSecondary : BlipColor.textTertiary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
         }
-        .disabled(localVideoURL == nil)
-        .accessibilityLabel("Share to TikTok")
+        .buttonStyle(.plain)
+        .disabled(!isReady)
+    }
+
+    private var socialDivider: some View {
+        Rectangle()
+            .fill(BlipColor.border)
+            .frame(width: 0.5)
+            .padding(.vertical, 8)
     }
 
     /// Downloads the stitched MP4 to a local tmp file so Share / Save-to-Photos
