@@ -6,10 +6,12 @@ struct LeaderboardView: View {
     @EnvironmentObject private var auth: AuthService
     @EnvironmentObject private var userDirectory: FirestoreUserDirectory
     @EnvironmentObject private var moderation: ModerationService
+    @EnvironmentObject private var users: UserRepository   // for current user's photo
 
     var body: some View {
         LeaderboardContent(
             currentUid: currentUid,
+            myPhotoURL: users.profile?.photoURL,
             userDirectory: userDirectory,
             moderation: moderation
         )
@@ -23,18 +25,28 @@ struct LeaderboardView: View {
 
 // MARK: - Content
 
+// Number of ranks shown in the main list (others see their rank pinned below)
+private let displayLimit = 10
+
 private struct LeaderboardContent: View {
 
     @StateObject private var vm: LeaderboardViewModel
     private let currentUid: String?
+    private let myPhotoURL: URL?
     @ObservedObject private var moderation: ModerationService
 
     /// Drives the staggered row-entrance animation.
     @State private var appeared = false
 
-    init(currentUid: String?, userDirectory: any UserRanking, moderation: ModerationService) {
-        self.currentUid = currentUid
-        self.moderation = moderation
+    init(
+        currentUid: String?,
+        myPhotoURL: URL?,
+        userDirectory: any UserRanking,
+        moderation: ModerationService
+    ) {
+        self.currentUid  = currentUid
+        self.myPhotoURL  = myPhotoURL
+        self.moderation  = moderation
         _vm = StateObject(wrappedValue: LeaderboardViewModel(userDirectory: userDirectory))
     }
 
@@ -112,60 +124,90 @@ private struct LeaderboardContent: View {
     // MARK: - List
 
     private var leaderboardList: some View {
-        ScrollView(showsIndicators: false) {
-            LazyVStack(spacing: 0) {
+        ZStack(alignment: .bottom) {
+            // Scrollable top-10 list
+            ScrollView(showsIndicators: false) {
+                LazyVStack(spacing: 0) {
 
-                // ── Top 3 podium ───────────────────────────────────────────
-                if vm.entries.count >= 3 {
-                    podiumSection
-                        .padding(.horizontal, 20)
-                        .padding(.top, 20)
-                        .padding(.bottom, 8)
-                        .opacity(appeared ? 1 : 0)
-                        .scaleEffect(appeared ? 1 : 0.92, anchor: .top)
-                        .animation(.spring(response: 0.55, dampingFraction: 0.78), value: appeared)
-                }
+                    // ── Top 3 podium ───────────────────────────────────────
+                    if vm.entries.count >= 3 {
+                        podiumSection
+                            .padding(.horizontal, 20)
+                            .padding(.top, 20)
+                            .padding(.bottom, 8)
+                            .opacity(appeared ? 1 : 0)
+                            .scaleEffect(appeared ? 1 : 0.92, anchor: .top)
+                            .animation(.spring(response: 0.55, dampingFraction: 0.78),
+                                       value: appeared)
+                    }
 
-                // ── Column header ──────────────────────────────────────────
-                HStack {
-                    Text("rank")
-                        .frame(width: 52, alignment: .leading)
-                    Text("player")
-                    Spacer()
-                    Text("clips")
-                }
-                .font(.blip(size: 11, weight: .semibold))
-                .foregroundStyle(BlipColor.textTertiary)
-                .textCase(.uppercase)
-                .tracking(0.5)
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-                .padding(.bottom, 6)
-
-                // ── Rows (rank 4 onward) ───────────────────────────────────
-                let rest = vm.entries.count > 3 ? Array(vm.entries[3...]) : []
-                ForEach(Array(rest.enumerated()), id: \.element.id) { index, entry in
-                    LeaderboardRow(entry: entry, isMe: entry.id == currentUid)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 4)
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 20)
-                        .animation(
-                            .spring(response: 0.45, dampingFraction: 0.78)
-                                .delay(Double(index) * 0.04),
-                            value: appeared
-                        )
-                }
-
-                // ── My rank banner (if outside top 50) ────────────────────
-                myRankBanner
+                    // ── Column header ──────────────────────────────────────
+                    HStack {
+                        Text("rank").frame(width: 52, alignment: .leading)
+                        Text("player")
+                        Spacer()
+                        Text("clips")
+                    }
+                    .font(.blip(size: 11, weight: .semibold))
+                    .foregroundStyle(BlipColor.textTertiary)
+                    .textCase(.uppercase)
+                    .tracking(0.5)
                     .padding(.horizontal, 20)
-                    .padding(.top, 8)
-                    .padding(.bottom, 24)
-                    .opacity(appeared ? 1 : 0)
-                    .animation(.spring(response: 0.5).delay(0.3), value: appeared)
+                    .padding(.top, 12)
+                    .padding(.bottom, 6)
+
+                    // ── Rows 4–10 ──────────────────────────────────────────
+                    let topTen = Array(vm.entries.prefix(displayLimit))
+                    let restRows = topTen.count > 3 ? Array(topTen[3...]) : []
+                    ForEach(Array(restRows.enumerated()), id: \.element.id) { idx, entry in
+                        LeaderboardRow(entry: entry, isMe: entry.id == currentUid)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 4)
+                            .opacity(appeared ? 1 : 0)
+                            .offset(y: appeared ? 0 : 20)
+                            .animation(
+                                .spring(response: 0.45, dampingFraction: 0.78)
+                                    .delay(Double(idx) * 0.04),
+                                value: appeared
+                            )
+                    }
+
+                    // Bottom padding so the pinned card doesn't cover last row
+                    if myEntryOutsideTopTen != nil {
+                        Spacer().frame(height: 90)
+                    } else {
+                        Spacer().frame(height: 24)
+                    }
+                }
+            }
+
+            // ── Pinned "my rank" card (outside top 10) ────────────────────
+            if let myEntry = myEntryOutsideTopTen {
+                myPinnedCard(entry: myEntry)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                    .background(
+                        LinearGradient(
+                            colors: [Color.clear, BlipColor.backgroundGradient.stops.last?.color ?? .clear],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                        .frame(height: 100)
+                        .allowsHitTesting(false),
+                        alignment: .top
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .animation(.spring(response: 0.4), value: myEntryOutsideTopTen?.id)
+    }
+
+    /// The current user's entry only when they are ranked below position `displayLimit`.
+    private var myEntryOutsideTopTen: LeaderboardEntry? {
+        guard let uid = currentUid,
+              let entry = vm.entries.first(where: { $0.id == uid }),
+              entry.rank > displayLimit
+        else { return nil }
+        return entry
     }
 
     // MARK: - Podium (top 3)
@@ -258,48 +300,74 @@ private struct LeaderboardContent: View {
         }
     }
 
-    // MARK: - My rank banner
+    // MARK: - Pinned card (shown when current user is outside top 10)
 
-    @ViewBuilder
-    private var myRankBanner: some View {
-        if let myEntry = vm.entries.first(where: { $0.id == currentUid }),
-           myEntry.rank > 3 {
-            HStack(spacing: 12) {
-                Image(systemName: "person.fill")
-                    .font(.system(size: 14))
-                    .foregroundStyle(BlipColor.accentNeutral)
-                    .frame(width: 32, height: 32)
-                    .background(BlipColor.accentNeutral.opacity(0.12),
-                                in: Circle())
+    private func myPinnedCard(entry: LeaderboardEntry) -> some View {
+        HStack(spacing: 12) {
+            // Rank chip
+            Text("#\(entry.rank)")
+                .font(.system(size: 15, weight: .black, design: .rounded))
+                .foregroundStyle(BlipColor.accentNeutral)
+                .frame(width: 48, alignment: .center)
+                .monospacedDigit()
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("your rank")
-                        .font(.blip(size: 11))
-                        .foregroundStyle(BlipColor.textTertiary)
-                    Text("#\(myEntry.rank)")
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                        .foregroundStyle(BlipColor.textPrimary)
-                }
-
-                Spacer()
-
-                HStack(spacing: 4) {
-                    Image(systemName: "film.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(BlipColor.textTertiary)
-                    Text("\(myEntry.totalClips) clips")
-                        .font(.blip(size: 13, weight: .semibold))
-                        .foregroundStyle(BlipColor.textSecondary)
+            // Profile photo avatar
+            ZStack {
+                Circle().fill(BlipColor.accentNeutral.opacity(0.15))
+                if let url = myPhotoURL {
+                    CachedAsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img): img.resizable().scaledToFill()
+                        default: Circle().fill(BlipColor.accentNeutral.opacity(0.15))
+                        }
+                    }
+                    .clipShape(Circle())
+                } else {
+                    Text(entry.handle.map { QRCodeCard.initials(from: $0) } ?? "?")
+                        .font(.blip(size: 13, weight: .bold))
+                        .foregroundStyle(BlipColor.accentNeutral)
                 }
             }
-            .padding(14)
-            .background(BlipColor.surface,
-                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(BlipColor.accentNeutral.opacity(0.25), lineWidth: 1.5)
-            )
+            .frame(width: 38, height: 38)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(BlipColor.accentNeutral.opacity(0.3), lineWidth: 1.5))
+
+            // Handle
+            VStack(alignment: .leading, spacing: 1) {
+                Text(entry.handle.map { "@\($0)" } ?? "you")
+                    .font(.blip(size: 15, weight: .bold))
+                    .foregroundStyle(BlipColor.textPrimary)
+                    .lineLimit(1)
+                Text("your rank")
+                    .font(.blip(size: 11))
+                    .foregroundStyle(BlipColor.textTertiary)
+            }
+
+            Spacer()
+
+            // Clips
+            HStack(spacing: 4) {
+                Text("\(entry.totalClips)")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(BlipColor.textSecondary)
+                    .monospacedDigit()
+                Image(systemName: "film.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(BlipColor.textTertiary)
+            }
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            BlipColor.surface
+                .shadow(.drop(color: BlipColor.accentNeutral.opacity(0.14),
+                              radius: 10, x: 0, y: -4)),
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(BlipColor.accentNeutral.opacity(0.3), lineWidth: 1.5)
+        )
     }
 }
 
