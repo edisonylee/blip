@@ -47,8 +47,10 @@ enum InstagramStoryShare {
         )
 
         // URL is a known-good hardcoded string — canOpenURL already passed.
+        // Use the completion-handler overload explicitly so the compiler doesn't
+        // pick up the async overload added in iOS 18 and require 'await'.
         if let url = URL(string: "instagram-stories://share") {
-            UIApplication.shared.open(url, options: [:])
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
     }
 }
