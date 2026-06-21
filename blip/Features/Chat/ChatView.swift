@@ -539,12 +539,11 @@ struct ChatView: View {
             }
             .buttonStyle(.plain)
 
-            // Live waveform + timer
+            // Live waveform + timer — capsule height matches the 36pt buttons
             HStack(spacing: 8) {
                 Circle()
                     .fill(BlipColor.error)
                     .frame(width: 8, height: 8)
-                    .opacity(0.85)
 
                 AudioWaveformView(
                     bars: audioRec.liveBars,
@@ -558,10 +557,11 @@ struct ChatView: View {
                 Text(formatAudio(audioRec.elapsed))
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
                     .foregroundStyle(BlipColor.textPrimary)
-                    .frame(width: 36)
+                    .monospacedDigit()
+                    .frame(width: 38, alignment: .trailing)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 4)  // 4pt → capsule height = 28+8 = 36pt, matches buttons
             .background(Color.black.opacity(0.05), in: Capsule())
 
             // Stop and go to preview
@@ -586,6 +586,7 @@ struct ChatView: View {
 
     // MARK: - Audio recording helpers
 
+    @MainActor
     private func toggleRecording() async {
         guard case .signedIn = auth.state else { return }
 

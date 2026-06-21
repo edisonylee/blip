@@ -45,29 +45,57 @@ final class AudioRecorder: ObservableObject {
 
     func start() {
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
-        try? session.setActive(true)
+
+        // Deactivate first so we get a clean session, then reconfigure
+        // for recording. Swallowing the deactivation error is fine — it
+        // only means no other app was using the session.
+        try? session.setActive(false, options: [])
+        do {
+            try session.setCategory(
+                .playAndRecord,
+                mode: .default,
+                options: [.defaultToSpeaker, .allowBluetooth]
+            )
+            try session.setActive(true)
+        } catch {
+            // Can't record without an active session — fail loudly in debug.
+            assertionFailure("[AudioRecorder] session setup failed: \(error)")
+            return
+        }
 
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("blip-audio-\(UUID().uuidString).m4a")
 
         let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 44_100,
-            AVNumberOfChannelsKey: 1,
+            AVFormatIDKey:            Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey:          44_100,
+            AVNumberOfChannelsKey:    1,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
         ]
 
-        guard let rec = try? AVAudioRecorder(url: url, settings: settings) else { return }
+        let rec: AVAudioRecorder
+        do {
+            rec = try AVAudioRecorder(url: url, settings: settings)
+        } catch {
+            assertionFailure("[AudioRecorder] AVAudioRecorder init failed: \(error)")
+            return
+        }
+
         rec.isMeteringEnabled = true
         rec.prepareToRecord()
-        rec.record()
 
-        recorder = rec
+        // record() returns false if the session isn't ready — guard on it so
+        // isRecording is only set when audio is actually flowing.
+        guard rec.record() else {
+            assertionFailure("[AudioRecorder] rec.record() returned false")
+            return
+        }
+
+        recorder    = rec
         recordingURL = url
         meterSamples = []
-        startDate = Date()
-        isRecording = true
+        startDate   = Date()
+        isRecording  = true
 
         timer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.tick() }

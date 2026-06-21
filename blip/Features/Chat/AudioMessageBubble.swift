@@ -300,8 +300,9 @@ struct AudioPreviewBar: View {
             .buttonStyle(.plain)
             .disabled(isSending)
 
-            // Play preview + waveform
+            // Play preview + waveform — all items share the same vertical centre
             HStack(spacing: 8) {
+                // Play / pause button
                 Button {
                     guard let url = previewURL else { return }
                     player.toggle(url: url, expectedDuration: duration)
@@ -309,31 +310,36 @@ struct AudioPreviewBar: View {
                     Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(BlipColor.accentNeutral)
-                        .frame(width: 30, height: 30)
+                        .frame(width: 28, height: 28)
                         .background(BlipColor.accentNeutral.opacity(0.12), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .disabled(previewURL == nil)
 
-                VStack(alignment: .leading, spacing: 3) {
+                // Waveform above, timer below — VStack fills remaining width
+                VStack(alignment: .leading, spacing: 2) {
                     AudioWaveformView(
                         bars: bars,
                         progress: player.progress,
                         activeColor: BlipColor.accentNeutral,
                         inactiveColor: Color.black.opacity(0.12)
                     )
-                    .frame(maxWidth: .infinity)
 
                     Text(player.isPlaying
-                         ? String(format: "%d:%02d", Int(player.currentTime) / 60, Int(player.currentTime) % 60)
+                         ? String(format: "%d:%02d",
+                                  Int(player.currentTime) / 60,
+                                  Int(player.currentTime) % 60)
                          : durationText)
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .foregroundStyle(BlipColor.textTertiary)
+                        .monospacedDigit()
                 }
+                .frame(maxWidth: .infinity)  // VStack (not waveform) fills available space
             }
             .padding(.horizontal, 10)
-            .padding(.vertical, 7)
+            .padding(.vertical, 4)  // 4pt → capsule height ≈ 36pt, matches trash/send buttons
             .background(Color.black.opacity(0.05), in: Capsule())
+            .frame(maxWidth: .infinity)
 
             // Send
             Button(action: onSend) {
