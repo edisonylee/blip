@@ -609,220 +609,29 @@ struct ExportView: View {
                 ])
             }
 
-            let raw = FileManager.default.temporaryDirectory
-                .appendingPathComponent("blip-export-raw-\(UUID().uuidString).mp4")
-            try? FileManager.default.removeItem(at: raw)
-            try FileManager.default.moveItem(at: tmpURL, to: raw)
-
-            // Burn hour chips into the video then set the labeled file.
-            let labeled = await burnHourLabels(into: raw)
-            localVideoURL = labeled
+            let dest = FileManager.default.temporaryDirectory
+                .appendingPathComponent("blip-export-\(UUID().uuidString).mp4")
+            try? FileManager.default.removeItem(at: dest)
+            try FileManager.default.moveItem(at: tmpURL, to: dest)
+            localVideoURL = dest
         } catch {
             localVideoURL = nil
             downloadError = "download failed — \(error.localizedDescription)"
         }
     }
 
-    // MARK: - Hour label text overlay (client-side, AVFoundation)
+    // NOTE: Client-side AVVideoCompositionCoreAnimationTool text-burning was
+    // removed — it crashed reliably on device (EXC_BREAKPOINT in AVFoundation)
+    // regardless of animation approach. Hour labels are surfaced in the UI via
+    // the chip row in readyState instead. If server-side ffmpeg drawtext is
+    // added to the exportStitch Cloud Function, it can be re-enabled there.
 
-    private func burnHourLabels(into sourceURL: URL) async -> URL {
-        // Capture MainActor-isolated data before leaving the actor
-        let hours   = hoursWithClips
-        let curHour = currentHour
-        guard !hours.isEmpty else { return sourceURL }
-
-        // Run entirely off the MainActor — AVFoundation re-encoding is CPU-intensive
-        // and must NOT block the main thread.
-        return await Task.detached(priority: .userInitiated) {
-            await Self.applyHourLabels(to: sourceURL, hours: hours, currentHour: curHour)
-        }.value
-    }
-
-    /// Static (nonisolated) so it can run in Task.detached without a MainActor hop.
-    private static func applyHourLabels(
-        to sourceURL: URL,
-        hours: [Int],
-        currentHour: Int
-    ) async -> URL {
-        do {
-            let asset = AVURLAsset(url: sourceURL)
-            let tracks = try await asset.loadTracks(withMediaType: .video)
-            guard let vt = tracks.first else { return sourceURL }
-
-            let duration    = try await asset.load(.duration)
-            let naturalSize = try await vt.load(.naturalSize)
-            let transform   = try await vt.load(.preferredTransform)
-
-            let totalSec = CMTimeGetSeconds(duration)
-            guard totalSec > 0 else { return sourceURL }
-
-            // Resolve display size accounting for the track's rotation transform
-            let t = transform
-            let swapped = (t.a == 0 && t.d == 0)
-            let renderSize = swapped
-                ? CGSize(width: naturalSize.height, height: naturalSize.width)
-                : naturalSize
-
-            let secPerHour = totalSec / Double(hours.count)
-
-            // ── Composition ───────────────────────────────────────────
-            let comp = AVMutableComposition()
-
-            // FIX 1: guard instead of ! — addMutableTrack CAN return nil
-            guard let cvt = comp.addMutableTrack(
-                withMediaType: .video,
-                preferredTrackID: kCMPersistentTrackID_Invalid
-            ) else { return sourceURL }
-
-            try cvt.insertTimeRange(
-                CMTimeRange(start: .zero, duration: duration), of: vt, at: .zero
-            )
-            cvt.preferredTransform = transform
-
-            let audioTracks = try await asset.loadTracks(withMediaType: .audio)
-            if let at = audioTracks.first {
-                let cat = comp.addMutableTrack(withMediaType: .audio,
-                                               preferredTrackID: kCMPersistentTrackID_Invalid)
-                try cat?.insertTimeRange(
-                    CMTimeRange(start: .zero, duration: duration), of: at, at: .zero
-                )
-            }
-
-            // ── Layer tree ────────────────────────────────────────────
-            // isGeometryFlipped=true → y=0 is the visual top (UIKit coords)
-            let parentLayer = CALayer()
-            parentLayer.frame = CGRect(origin: .zero, size: renderSize)
-            parentLayer.isGeometryFlipped = true
-
-            let videoLayer = CALayer()
-            videoLayer.frame = parentLayer.frame
-            parentLayer.addSublayer(videoLayer)
-
-            let chipH    = max(28.0, renderSize.height * 0.055)
-            let fontSize = chipH * 0.52
-            let padH     = renderSize.width  * 0.035
-            let padV     = renderSize.height * 0.03
-
-            for (idx, hour) in hours.enumerated() {
-                let label = Self.staticHourLabel(for: hour, currentHour: currentHour)
-                let chipW = CGFloat(label.count) * fontSize * 0.72 + padH * 2.2
-
-                let chip = CALayer()
-                chip.backgroundColor = UIColor.black.withAlphaComponent(0.55).cgColor
-                chip.cornerRadius    = chipH / 2
-                chip.frame = CGRect(
-                    x: renderSize.width - chipW - padH,
-                    y: padV,
-                    width: chipW,
-                    height: chipH
-                )
-
-                let txt = CATextLayer()
-                txt.string          = label
-                txt.fontSize        = fontSize
-                txt.foregroundColor = UIColor.white.cgColor
-                txt.alignmentMode   = .center
-                txt.contentsScale   = 3.0
-                txt.frame           = chip.bounds
-                chip.addSublayer(txt)
-
-                let segStart = Double(idx) * secPerHour
-                let segEnd   = Double(idx + 1) * secPerHour
-
-                // FIX 2: Avoid CAKeyframeAnimation duplicate keyTimes (crashes when
-                // idx=0 produces [0, 0, ...]).  Use two separate CABasicAnimations
-                // instead — one to show, one to hide — with explicit beginTime.
-                //
-                // idx == 0: chip starts VISIBLE; just add a hide anim at segment end.
-                // idx  > 0: chip starts hidden; show anim fires at segStart.
-
-                if idx == 0 {
-                    chip.opacity = 1.0
-                    if hours.count > 1 {
-                        let hide = CABasicAnimation(keyPath: "opacity")
-                        hide.toValue               = 0.0
-                        hide.beginTime             = segEnd
-                        hide.duration              = max(0.001, totalSec - segEnd)
-                        hide.fillMode              = .forwards
-                        hide.isRemovedOnCompletion = false
-                        chip.add(hide, forKey: "hide")
-                    }
-                } else {
-                    chip.opacity = 0.0
-
-                    // Show at segment start
-                    let show = CABasicAnimation(keyPath: "opacity")
-                    show.toValue               = 1.0
-                    show.beginTime             = segStart
-                    show.duration              = secPerHour
-                    show.fillMode              = .backwards
-                    show.isRemovedOnCompletion = false
-                    chip.add(show, forKey: "show")
-
-                    // Hide at segment end (unless this is the last hour)
-                    if idx < hours.count - 1 {
-                        let hide = CABasicAnimation(keyPath: "opacity")
-                        hide.toValue               = 0.0
-                        hide.beginTime             = segEnd
-                        hide.duration              = max(0.001, totalSec - segEnd)
-                        hide.fillMode              = .forwards
-                        hide.isRemovedOnCompletion = false
-                        chip.add(hide, forKey: "hide")
-                    }
-                }
-
-                parentLayer.addSublayer(chip)
-            }
-
-            // ── Video composition ─────────────────────────────────────
-            let vc = AVMutableVideoComposition()
-            vc.renderSize    = renderSize
-            vc.frameDuration = CMTime(value: 1, timescale: 30)
-            vc.animationTool = AVVideoCompositionCoreAnimationTool(
-                postProcessingAsVideoLayer: videoLayer, in: parentLayer
-            )
-
-            let instr = AVMutableVideoCompositionInstruction()
-            instr.timeRange = CMTimeRange(start: .zero, duration: duration)
-            let li = AVMutableVideoCompositionLayerInstruction(assetTrack: cvt)
-            instr.layerInstructions = [li]
-            vc.instructions = [instr]
-
-            // ── Export ────────────────────────────────────────────────
-            // FIX 3: MediumQuality is more reliable with custom videoComposition
-            // than HighestQuality which can conflict with the composition settings.
-            let out = FileManager.default.temporaryDirectory
-                .appendingPathComponent("blip-labeled-\(UUID().uuidString).mp4")
-            try? FileManager.default.removeItem(at: out)
-
-            guard let ex = AVAssetExportSession(
-                asset: comp, presetName: AVAssetExportPresetMediumQuality
-            ) else { return sourceURL }
-
-            ex.outputURL              = out
-            ex.outputFileType         = .mp4
-            ex.videoComposition       = vc
-            ex.shouldOptimizeForNetworkUse = true
-
-            await ex.export()
-            return ex.status == .completed ? out : sourceURL
-
-        } catch {
-            return sourceURL  // always return a usable file
-        }
-    }
-
-    private static func staticHourLabel(for hour: Int, currentHour: Int) -> String {
+    private func hourLabelShort(for hour: Int) -> String {
         if hour == currentHour { return "NOW" }
         var c = DateComponents(); c.hour = hour
         let date = Calendar.current.date(from: c) ?? Date()
         let f = DateFormatter(); f.dateFormat = "h a"
         return f.string(from: date).uppercased()
-    }
-
-    /// Instance wrapper used by SwiftUI views (delegates to the static version).
-    private func hourLabelShort(for hour: Int) -> String {
-        Self.staticHourLabel(for: hour, currentHour: currentHour)
     }
 
     @ViewBuilder
