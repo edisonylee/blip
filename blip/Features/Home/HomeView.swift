@@ -5,6 +5,11 @@ struct HomeView: View {
     @EnvironmentObject private var repo: BlipRepository
     @EnvironmentObject private var users: UserRepository
     @EnvironmentObject private var deepLinks: DeepLinkRouter
+    @EnvironmentObject private var userDirectory: FirestoreUserDirectory
+
+    /// uid → profile photo URL loaded lazily when blip cards appear.
+    /// Starts empty; CachedAsyncImage fills the gap while loading.
+    @State private var memberPhotoURLs: [String: URL] = [:]
 
     @StateObject private var vm = HomeViewModel()
     @StateObject private var clipUploader = ClipUploader()
@@ -242,11 +247,16 @@ struct HomeView: View {
                 LazyVStack(spacing: 14) {
                     ForEach(repo.blips) { blip in
                         NavigationLink(value: blip) {
-                            BlipCard(title: blip.name,
-                                     cardColor: vm.cardColor(for: blip),
-                                     members: vm.cardMembers(for: blip))
+                            BlipCard(
+                                title:     blip.name,
+                                cardColor: vm.cardColor(for: blip),
+                                members:   vm.cardMembers(for: blip,
+                                                          photoURLs: memberPhotoURLs),
+                                isActive:  blip.isActive()
+                            )
                         }
                         .buttonStyle(.plain)
+                        .task(id: blip.id) { await loadPhotos(for: blip) }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -279,6 +289,28 @@ struct HomeView: View {
                 .padding(.horizontal, 32)
             }
             Spacer()
+        }
+    }
+
+    // MARK: - Member photo loader
+
+    /// Fetches profile photo URLs for all members of `blip` that haven't been
+    /// loaded yet.  Results are stored in `memberPhotoURLs` which BlipCard reads.
+    /// Uses FirestoreUserDirectory (same service as Leaderboard/Friends) so data
+    /// comes from the shared `users` collection — no extra listener overhead.
+    private func loadPhotos(for blip: Blip) async {
+        let missing = blip.members.filter { memberPhotoURLs[$0] == nil }
+        guard !missing.isEmpty else { return }
+        await withTaskGroup(of: (String, URL?).self) { group in
+            for uid in missing {
+                group.addTask {
+                    let user = try? await self.userDirectory.fetchUser(uid: uid)
+                    return (uid, user??.photoURL)
+                }
+            }
+            for await (uid, url) in group {
+                if let url { memberPhotoURLs[uid] = url }
+            }
         }
     }
 

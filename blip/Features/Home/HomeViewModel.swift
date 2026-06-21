@@ -13,9 +13,19 @@ final class HomeViewModel: ObservableObject {
         return BlipColor.cardPalette[index]
     }
 
-    func cardMembers(for blip: Blip) -> [BlipCardMember] {
+    /// Build member data for a card.  `photoURLs` is a uid→URL cache loaded
+    /// lazily by HomeView via FirestoreUserDirectory; missing entries fall back
+    /// to two-letter initials so the card renders immediately while photos load.
+    func cardMembers(
+        for blip: Blip,
+        photoURLs: [String: URL] = [:]
+    ) -> [BlipCardMember] {
         blip.members.map { uid in
-            BlipCardMember(id: uid, initials: String(uid.prefix(2)).uppercased())
+            BlipCardMember(
+                id:       uid,
+                initials: String(uid.prefix(2)).uppercased(),
+                photoURL: photoURLs[uid]
+            )
         }
     }
 
