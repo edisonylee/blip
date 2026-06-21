@@ -22,20 +22,22 @@ enum InstagramStoryShare {
         case readFailed(Error)
     }
 
-    /// Hand a local video file to Instagram Stories. Throws `notInstalled` if
-    /// IG isn't on the device, or `readFailed` if we can't load the file.
-    static func share(videoFileURL: URL) throws {
+    /// Hand a local video file to Instagram Stories.
+    /// File reading is dispatched to a background thread to avoid freezing the UI.
+    @MainActor
+    static func share(videoFileURL: URL) async throws {
         guard isAvailable else { throw ShareError.notInstalled }
 
-        let data: Data
-        do {
-            data = try Data(contentsOf: videoFileURL)
-        } catch {
-            throw ShareError.readFailed(error)
-        }
+        // Read the (potentially large) video file off the main thread.
+        let data = try await Task.detached(priority: .userInitiated) {
+            do {
+                return try Data(contentsOf: videoFileURL)
+            } catch {
+                throw ShareError.readFailed(error)
+            }
+        }.value
 
-        // Pasteboard handoff — IG reads these keys and ignores the rest. Setting
-        // an expiration means a stale paste from a previous share won't leak.
+        // Pasteboard handoff must happen on the main thread.
         let item: [String: Any] = [
             "com.instagram.sharedSticker.backgroundVideo": data,
         ]
@@ -44,7 +46,9 @@ enum InstagramStoryShare {
             options: [.expirationDate: Date().addingTimeInterval(5 * 60)]
         )
 
-        let url = URL(string: "instagram-stories://share")!
-        UIApplication.shared.open(url, options: [:])
+        // URL is a known-good hardcoded string — canOpenURL already passed.
+        if let url = URL(string: "instagram-stories://share") {
+            UIApplication.shared.open(url, options: [:])
+        }
     }
 }

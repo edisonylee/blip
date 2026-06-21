@@ -513,7 +513,7 @@ struct ExportView: View {
                 isReady: localVideoURL != nil
             ) {
                 guard let local = localVideoURL else { return }
-                try? InstagramStoryShare.share(videoFileURL: local)
+                try? await InstagramStoryShare.share(videoFileURL: local)
             }
 
             socialDivider

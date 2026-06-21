@@ -33,8 +33,12 @@ final class ProfilePhotoUploader: ProfilePhotoUploading {
     func upload(_ image: UIImage, uid: String) async throws -> URL {
         guard !uid.isEmpty else { throw UploadError.notSignedIn }
 
-        let resized = Self.resize(image, maxEdge: Self.maxEdge)
-        guard let data = resized.jpegData(compressionQuality: Self.jpegQuality) else {
+        // Resize + JPEG-encode off the main thread — UIGraphicsImageRenderer and
+        // jpegData are synchronous CPU work that blocks the UI if left on MainActor.
+        guard let data = await Task.detached(priority: .userInitiated) {
+            let resized = Self.resize(image, maxEdge: Self.maxEdge)
+            return resized.jpegData(compressionQuality: Self.jpegQuality)
+        }.value else {
             throw UploadError.encodingFailed
         }
 
