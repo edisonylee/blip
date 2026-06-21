@@ -12,14 +12,12 @@ struct HomeView: View {
     @State private var memberPhotoURLs: [String: URL] = [:]
 
     @StateObject private var vm = HomeViewModel()
-    @StateObject private var clipUploader = ClipUploader()
     @StateObject private var requestsVM = RequestsViewModel()
 
     @State private var showPlusMenu = false
     @State private var creationDestination: CreationDestination?
     @State private var path = NavigationPath()
     @State private var pendingCaptureBlip: Blip?
-    @State private var showGlobalCapture = false
     @State private var showReferralShare = false
     @State private var activeTab: Tab = .blips
     @State private var didOpenCameraOnLaunch = false
@@ -140,13 +138,9 @@ struct HomeView: View {
                     CaptureView(blip: blip, onPosted: { pendingCaptureBlip = nil })
                 }
             }
-            .fullScreenCover(isPresented: $showGlobalCapture) {
-                if case .signedIn(let uid) = auth.state {
-                    CaptureGlobalView(uid: uid, uploader: clipUploader,
-                                      onSent: { showGlobalCapture = false })
-                        .environmentObject(repo)
-                }
-            }
+            // CaptureGlobalView removed — home camera now reuses CaptureView
+            // (same landscape experience as the blip group camera). Destination
+            // blip is picked in ReviewView's "send to" section after recording.
         }
         .onChange(of: deepLinks.pending) { _, action in handle(action) }
         .onAppear {
@@ -156,7 +150,7 @@ struct HomeView: View {
             if !didOpenCameraOnLaunch {
                 didOpenCameraOnLaunch = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    showGlobalCapture = true
+                    handleCameraTab()
                 }
             }
         }
@@ -307,7 +301,7 @@ struct HomeView: View {
                     // try? on a throws->Optional function collapses in Swift 5.7+:
                     // result is BlipUser? not BlipUser??, so avoid double-chaining.
                     let user = try? await self.userDirectory.fetchUser(uid: uid)
-                    return (uid, user.flatMap { $0?.photoURL })
+                    return (uid, user.flatMap { $0.photoURL })
                 }
             }
             for await (uid, url) in group {
@@ -318,7 +312,21 @@ struct HomeView: View {
 
     // MARK: - Camera
 
-    private func handleCameraTab() { showGlobalCapture = true }
+    private func handleCameraTab() {
+        // Reuse CaptureView (same as group blip camera) instead of the
+        // now-removed CaptureGlobalView — no redundant duplicate.
+        // Pick the first active blip; fall back to any blip when nothing is
+        // currently in the active window. ReviewView's "send to" picker lets
+        // the user change or add more destinations before posting.
+        let target = repo.blips.first(where: { $0.isActive() })
+                  ?? repo.blips.first
+        if let target {
+            pendingCaptureBlip = target
+        } else {
+            // No blips exist yet — prompt to create one.
+            creationDestination = .create
+        }
+    }
 
     // MARK: - Debug badge
 
