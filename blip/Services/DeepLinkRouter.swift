@@ -23,6 +23,7 @@ final class DeepLinkRouter: ObservableObject {
         case openCapture
         case openBlip(id: String)
         case invite(referrerUid: String)
+        case openFriends    // notification tap → switch to friends/requests tab
     }
 
     @Published var pending: Action?
@@ -48,6 +49,8 @@ final class DeepLinkRouter: ObservableObject {
         switch host {
         case "capture":
             pending = .openCapture
+        case "friends":
+            pending = .openFriends
         case "blip":
             if let id = pathParts.first {
                 pending = .openBlip(id: id)

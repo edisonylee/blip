@@ -61,6 +61,9 @@ struct RootView: View {
                     moderation.startListening(for: uid)
                     users.startListening(for: uid)
                     friendsRepo.startListening(for: uid)
+                    // Request notification permission after sign-in (not at cold launch)
+                    // so the user understands the context when the system dialog appears.
+                    _ = await AppDelegate.requestNotificationPermission()
                 }
         }
     }

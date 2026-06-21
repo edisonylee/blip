@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 struct HomeView: View {
     @EnvironmentObject private var auth: AuthService
@@ -6,21 +7,28 @@ struct HomeView: View {
     @EnvironmentObject private var users: UserRepository
     @EnvironmentObject private var deepLinks: DeepLinkRouter
     @EnvironmentObject private var userDirectory: FirestoreUserDirectory
+    @EnvironmentObject private var friendsRepo: FriendsRepository   // for bell badge
 
     /// uid → profile photo URL loaded lazily when blip cards appear.
-    /// Starts empty; CachedAsyncImage fills the gap while loading.
     @State private var memberPhotoURLs: [String: URL] = [:]
 
     @StateObject private var vm = HomeViewModel()
     @StateObject private var requestsVM = RequestsViewModel()
 
     @State private var showPlusMenu = false
+    @State private var showNotifications = false     // bell tap → notifications sheet
     @State private var creationDestination: CreationDestination?
     @State private var path = NavigationPath()
     @State private var pendingCaptureBlip: Blip?
     @State private var showReferralShare = false
     @State private var activeTab: Tab = .blips
     @State private var didOpenCameraOnLaunch = false
+
+    /// Combined unread count: incoming friend requests + pending blip invites.
+    /// Drives the red badge dot on the bell icon.
+    private var totalUnread: Int {
+        friendsRepo.incomingRequests.count + requestsVM.pendingCount
+    }
 
     // 4 navigable tabs — camera is the central raised button, not a tab page
     enum Tab { case blips, requests, friends, profile }
@@ -133,6 +141,10 @@ struct HomeView: View {
             .sheet(isPresented: $showReferralShare) {
                 ShareSheet(activityItems: [referralShareText])
             }
+            .sheet(isPresented: $showNotifications) {
+                NotificationsView(requestsVM: requestsVM)
+                    .presentationDetents([.large])
+            }
             .fullScreenCover(item: $pendingCaptureBlip) { blip in
                 NavigationStack {
                     CaptureView(blip: blip, onPosted: { pendingCaptureBlip = nil })
@@ -146,7 +158,6 @@ struct HomeView: View {
         .onAppear {
             handle(deepLinks.pending)
             if let uid = currentUid { requestsVM.startListening(uid: uid) }
-            // Open camera on first home-screen appear (camera is the default action)
             if !didOpenCameraOnLaunch {
                 didOpenCameraOnLaunch = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -156,6 +167,11 @@ struct HomeView: View {
         }
         .onChange(of: currentUid) { _, uid in
             if let uid { requestsVM.startListening(uid: uid) }
+        }
+        // Keep iOS app-icon badge in sync with unread count
+        .onChange(of: totalUnread) { _, count in
+            UNUserNotificationCenter.current()
+                .setBadgeCount(count, withCompletionHandler: nil)
         }
     }
 
@@ -220,14 +236,38 @@ struct HomeView: View {
                     .foregroundStyle(BlipColor.textTertiary)
             }
             Spacer()
-            Button { } label: {
-                Image(systemName: "bell")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(BlipColor.textSecondary)
-                    .frame(width: 40, height: 40)
-                    .background(BlipColor.surface.opacity(0.8), in: Circle())
-                    .shadow(color: BlipColor.accent.opacity(0.12), radius: 6, x: 0, y: 2)
+            Button { showNotifications = true } label: {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: totalUnread > 0 ? "bell.fill" : "bell")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(BlipColor.textSecondary)
+                        .frame(width: 40, height: 40)
+                        .background(BlipColor.surface.opacity(0.8), in: Circle())
+                        .shadow(color: BlipColor.accent.opacity(0.12), radius: 6, x: 0, y: 2)
+
+                    // Red badge — top-right corner of the bell circle
+                    if totalUnread > 0 {
+                        ZStack {
+                            Circle()
+                                .fill(Color(hex: 0xEF4444))
+                                .frame(width: 17, height: 17)
+                            if totalUnread < 10 {
+                                Text("\(totalUnread)")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(.white)
+                            } else {
+                                Text("9+")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        .offset(x: 4, y: -4)
+                        .transition(.scale.combined(with: .opacity))
+                        .animation(.spring(response: 0.3), value: totalUnread)
+                    }
+                }
             }
+            .accessibilityLabel(totalUnread > 0 ? "\(totalUnread) unread notifications" : "notifications")
         }
         .padding(.horizontal, 20)
         .padding(.top, 20)
@@ -365,6 +405,11 @@ struct HomeView: View {
         case .invite(let referrerUid):
             if let me = currentUid, me != referrerUid {
                 Task { try? await users.claimReferral(referrerUid) }
+            }
+        case .openFriends:
+            // Notification tap for friend request → switch to friends tab
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                activeTab = .friends
             }
         }
         deepLinks.consume()
